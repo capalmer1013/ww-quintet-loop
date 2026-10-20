@@ -11,12 +11,13 @@ from pathlib import Path
 
 from .config import Config
 from .pattern import tile
+from .reverb import reverb
 from .samples import QUINTET, SAMPLE_RATE, Instrument, Sample, instrument, midi_to_note
 from .theory import PitchSet
-from .voice import Voice, palette, piece_beats
+from .voice import Voice, palette, piece_beats, resolve_pitch
 
 __all__ = ["render", "piece_code", "voice_line", "sustain", "mix", "write_wav", "seconds",
-           "leveled", "loudness_db", "hairpin"]
+           "leveled", "loudness_db", "hairpin", "lfo_gains", "with_gains"]
 
 # fade where a note is cut short: 10% of the note, between 10 ms (short notes) and 150 ms (long)
 CUT_FADE_SECONDS = (0.01, 0.15)
@@ -24,13 +25,13 @@ CUT_FADE_SECONDS = (0.01, 0.15)
 ATTACK_SECONDS = 0.3  # (or the first quarter of the sample) kept as-is at the start
 RELEASE_SECONDS = 0.6  # (or the last 35%) played at the end as the note's natural release
 CROSSFADE_SECONDS = 0.1  # equal-power crossfade at each loop seam
-# short notes fade in over this many beats (80 ms at 60 bpm), at most a quarter of the note
-ATTACK_BEATS = 0.08
+LFO_BLOCK = 512  # frames per volume-sine gain step (~12 ms)
+# short notes fade in over this many beats (150 ms at 60 bpm), at most a quarter of the note
+ATTACK_BEATS = 0.15
 # long notes (at least this long) swell <> from near silence up to their level and away again
 LONG_NOTE_SECONDS = 1.5
 HAIRPIN_PEAK = 0.4  # where in the note the swell peaks
 HAIRPIN_FLOOR_DB = -30.0  # level at the note's start and end, relative to its peak
-MAX_LAYER = "mp"  # loudest recorded dynamic ever used; quieter layers stand in when a note lacks it
 # levelling: the library's recording levels differ by up to ~14 dB between instruments, so every
 # sample is scaled so its loudest LEVEL_WINDOW_SECONDS hit LEVEL_REF_DB + DYNAMIC_DB[dynamic] (RMS)
 LEVEL_REF_DB = -24.0  # mf
@@ -143,21 +144,49 @@ def voice_line(inst: Instrument, v: Voice, notes: PitchSet, total: Fraction, tem
         if e.index is None:
             line.extend(array("h", bytes(2 * n)))
             continue
-        midi = tones[(e.index - 1) % len(tones)]
-        sample = inst.note(midi_to_note(midi), v.dynamic, seconds(e.beats, tempo), max_dynamic=MAX_LAYER)
+        midi = resolve_pitch(e.index, tones, notes, inst.playable)
+        sample = inst.note(midi_to_note(midi), v.dynamic, seconds(e.beats, tempo), max_dynamic=inst.max_layer)
         audio = _note_audio(sample, v.dynamic, n, tempo)
         line.extend(audio)
     return line
 
 
-def mix(lines: dict[str, array]) -> tuple[array, array]:
-    """Constant-power panned stereo at MASTER_GAIN, scaled down if it would peak above PEAK."""
+def lfo_gains(v: Voice, frames: int) -> list[float]:
+    """The voice's volume-sine gain for each LFO_BLOCK of a piece `frames` long."""
+    return [v.gain((a + LFO_BLOCK / 2) / frames) for a in range(0, frames, LFO_BLOCK)]
+
+
+def with_gains(line: array, gains: list[float]) -> array:
+    """A copy of a line with per-LFO_BLOCK gains applied (for stems)."""
+    out = array("h")
+    for b, g in enumerate(gains):
+        out.extend(array("h", [int(x * g) for x in line[b * LFO_BLOCK:(b + 1) * LFO_BLOCK]]))
+    return out
+
+
+def mix(lines: dict[str, array], gains: dict[str, list[float]] | None = None, reverb_amount: float = 0.0,
+        room: float = 0.8) -> tuple[array, array]:
+    """Constant-power panned stereo at MASTER_GAIN, with per-LFO_BLOCK voice gains folded into the pan
+    gains, plus reverb; scaled down if it would peak above PEAK."""
+    frames = len(lines[QUINTET[0]])
+    blocks = range(0, frames, LFO_BLOCK)
+    gains = gains or {}
+    voice_gains = [gains.get(n) or [1.0] * len(blocks) for n in QUINTET]
     pans = [(PAN[n] + 1) * math.pi / 4 for n in QUINTET]
-    l0, l1, l2, l3, l4 = (MASTER_GAIN * math.cos(t) for t in pans)
-    r0, r1, r2, r3, r4 = (MASTER_GAIN * math.sin(t) for t in pans)
-    frames = list(zip(*(lines[n] for n in QUINTET)))
-    left = [v * l0 + w * l1 + x * l2 + y * l3 + z * l4 for v, w, x, y, z in frames]
-    right = [v * r0 + w * r1 + x * r2 + y * r3 + z * r4 for v, w, x, y, z in frames]
+    pan_l = [MASTER_GAIN * math.cos(t) for t in pans]
+    pan_r = [MASTER_GAIN * math.sin(t) for t in pans]
+    a, b, c, d, e = (lines[n] for n in QUINTET)
+    left: list[float] = []
+    right: list[float] = []
+    for i, start in enumerate(blocks):
+        gs = [g[i] for g in voice_gains]
+        l0, l1, l2, l3, l4 = (p * g for p, g in zip(pan_l, gs))
+        r0, r1, r2, r3, r4 = (p * g for p, g in zip(pan_r, gs))
+        sl = slice(start, start + LFO_BLOCK)
+        block = list(zip(a[sl], b[sl], c[sl], d[sl], e[sl]))
+        left += [v * l0 + w * l1 + x * l2 + y * l3 + z * l4 for v, w, x, y, z in block]
+        right += [v * r0 + w * r1 + x * r2 + y * r3 + z * r4 for v, w, x, y, z in block]
+    left, right = reverb(left, right, reverb_amount, room)
     peak = max(max(map(abs, left), default=0), max(map(abs, right), default=0))
     scale = min(1.0, PEAK * 32767 / peak) if peak else 1.0
     return array("h", [int(x * scale) for x in left]), array("h", [int(x * scale) for x in right])
@@ -185,11 +214,14 @@ def render(name: str, notes: PitchSet, **voices: Voice) -> list[Path]:
         raise ValueError(f"render needs exactly {QUINTET}; missing {sorted(missing)}, unknown {sorted(unknown)}")
     config = Config.current()
     total = piece_beats(voices.values())
-    lines = {n: voice_line(instrument(n, config), voices[n], notes, total, config.tempo) for n in QUINTET}
+    lines = {n: voice_line(instrument(n, config), voices[n], notes, total, config.bpm()) for n in QUINTET}
     out = config.output_dir
-    paths = [write_wav(out / f"{name}.wav", *mix(lines))]
+    frames = len(lines[QUINTET[0]])
+    gains = {n: lfo_gains(voices[n], frames) for n in QUINTET if voices[n].lfo}
+    paths = [write_wav(out / f"{name}.wav", *mix(lines, gains, config.reverb, config.room))]
     if config.stems:
-        paths += [write_wav(out / f"{name}_{n}.wav", lines[n]) for n in QUINTET]
+        paths += [write_wav(out / f"{name}_{n}.wav", with_gains(lines[n], gains[n]) if n in gains else lines[n])
+                  for n in QUINTET]
     return paths
 
 
@@ -202,10 +234,10 @@ def piece_code(name: str, notes: PitchSet, voices: dict[str, Voice], seed: int |
     width = max(map(len, QUINTET))
     body = "".join(f"    {n:<{width}} = {voices[n].code()},\n" for n in QUINTET)
     return (
-        f'"""{name}: {about}{notes!r}, {seconds(total, config.tempo):.2f}s"""\n'
+        f'"""{name}: {about}{notes!r}, {config.bpm():g} bpm, {seconds(total, config.bpm()):.2f}s"""\n'
         "import sys\n"
         f"sys.path.insert(0, {str(repo)!r})  # directory containing utils/\n"
         "from utils import *\n\n"
-        f"Config(tempo={config.tempo!r})\n"
+        f"Config(tempo={config.tempo!r}, reverb={config.reverb!r}, room={config.room!r})\n"
         f"render({name!r}, {notes!r},\n{body})\n"
     )

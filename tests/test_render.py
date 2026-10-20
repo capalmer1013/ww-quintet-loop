@@ -9,7 +9,7 @@ from unittest import mock
 
 from utils import (SAMPLE_RATE, Config, C, _, hairpin, instrument, leveled, loudness_db, midi_to_note, palette,
                    piece_code, render, sustain, voice, voice_line)
-from utils.render import PEAK
+from utils.render import ATTACK_BEATS, PEAK
 
 # 4 beats at 240 bpm = 1 s
 PIECE = dict(
@@ -81,14 +81,17 @@ class RenderTest(unittest.TestCase):
                     sample = inst.note(midi_to_note(m), dyn, 1.0)
                     self.assertAlmostEqual(loudness_db(leveled(sample, dyn)), target, delta=0.5, msg=(name, m, dyn))
 
-    def test_no_sample_layer_above_mp(self):
+    def test_layers_capped_per_instrument(self):
         for name in ("flute", "oboe", "clarinet", "horn", "bassoon"):
             inst = instrument(name)
             with mock.patch.object(inst, "note", wraps=inst.note) as note:
                 for dyn in ("p", "mp", "mf", "ff"):
                     voice_line(inst, voice([1, [2, 3], 4], beats=2, dynamic=dyn), C.lydian, 2, 60)
             used = {s.dynamic for s in [inst.note(*c.args, **c.kwargs) for c in note.call_args_list]}
-            self.assertTrue(used <= {"pp", "p", "mp"}, (name, used))
+            allowed = {"pp", "p", "mp"} | ({"mf"} if name != "horn" else set())
+            self.assertTrue(used <= allowed, (name, used))
+            if name != "horn" and "mf" in inst.dynamics:
+                self.assertIn("mf", used)  # woodwinds with mf recordings do reach them
 
     def test_hairpin_shape(self):
         shaped = hairpin(array("h", [10000] * 1000))
@@ -108,9 +111,24 @@ class RenderTest(unittest.TestCase):
         flute = instrument("flute")
         for tempo in (60, 120):
             line = voice_line(flute, voice([1], beats=1), C.maj7s11, 1, tempo)  # 1 s and 0.5 s: short
-            k = round(0.08 * 60 / tempo * SAMPLE_RATE)
+            k = round(ATTACK_BEATS * 60 / tempo * SAMPLE_RATE)
             self.assertEqual(line[0], 0)
             self.assertLess(max(map(abs, line[:k // 8])), max(map(abs, line[k:2 * k])) / 4)
+
+    def test_volume_sine_in_mix_and_stems(self):
+        Config(argv=[], tempo=60, output_dir=self.tmp, stems=True, reverb=0)
+        silent = {n: voice([0], beats=4) for n in PIECE}
+
+        def horn_peaks(label, horn):  # peak of each 1 s note in the horn stem of a 4 s piece
+            mixed = read(render(label, C.maj7s11, **dict(silent, horn=horn))[0])[1]
+            self.assertEqual(len(mixed), 2 * 4 * SAMPLE_RATE)
+            stem = read(self.tmp / f"{label}_horn.wav")[1]
+            return [max(map(abs, stem[i * SAMPLE_RATE:(i + 1) * SAMPLE_RATE])) for i in range(4)]
+
+        steady = horn_peaks("steady", voice([1, 1, 1, 1], beats=4))
+        swaying = horn_peaks("swaying", voice([1, 1, 1, 1], beats=4, lfo=1))  # loud, quiet at 2 s, loud
+        self.assertAlmostEqual(swaying[0] / steady[0], 1, delta=0.15)
+        self.assertLess(min(swaying[1:3]), 0.75 * steady[1])  # the notes either side of the trough dip
 
     def test_missing_voice(self):
         with self.assertRaises(ValueError):

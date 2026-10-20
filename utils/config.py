@@ -5,9 +5,11 @@ import argparse
 import sys
 from dataclasses import InitVar, dataclass, field, fields
 from pathlib import Path
+import random
 from typing import ClassVar
 
 DEFAULT_SAMPLE_ROOT = Path(__file__).resolve().parent.parent / "samples"
+TEMPO_RANGE = (50, 70)  # bpm, inclusive, when the tempo is random per seed
 
 
 @dataclass
@@ -19,10 +21,13 @@ class Config:
     """
 
     sample_root: Path = field(default=DEFAULT_SAMPLE_ROOT, metadata={"help": "directory of instrument sample folders"})
-    tempo: float = field(default=60.0, metadata={"help": "beats per minute"})
-    notes: str = field(default="C.maj7s11", metadata={"help": "note set, e.g. C.lydian, Fs.maj7s11, Bb.dom7"})
+    tempo: float = field(default=0.0, metadata={"help": "beats per minute; 0 = random 50-70 per seed"})
+    notes: str = field(default="random", metadata={
+        "help": "note set: random (key and chord), C.random (chord), or e.g. C.maj9, Fs.maj7s11, Bb.lydian"})
     seeds: str = field(default="0", metadata={"help": "seed or range A-B (B exclusive); one piece per seed"})
-    max_seconds: float = field(default=180.0, metadata={"help": "longest allowed piece (one full phase cycle)"})
+    reverb: float = field(default=0.3, metadata={"help": "hall reverb amount (0 = dry)"})
+    room: float = field(default=0.8, metadata={"help": "hall size, 0-1 (0.8 is about a 2.6 s decay)"})
+    max_seconds: float = field(default=360.0, metadata={"help": "longest allowed piece (one full phase cycle)"})
     output_dir: Path = field(default=Path("out"), metadata={"help": "where pieces are written"})
     stems: bool = field(default=False, metadata={"help": "also write one mono WAV per instrument"})
     code: bool = field(default=False, metadata={"help": "also write a .py file that reproduces each piece"})
@@ -55,6 +60,17 @@ class Config:
     def current(cls) -> Config:
         """The active config, creating a default one (which still reads the CLI) if none exists."""
         return cls._current or cls()
+
+    def bpm(self) -> float:
+        """The tempo to render at; raises if it is still 0 (random), which main.py resolves per seed."""
+        if not self.tempo:
+            raise ValueError("tempo 0 means random per seed: use piece_tempo(seed), or set Config(tempo=...)")
+        return self.tempo
+
+    def piece_tempo(self, seed: int) -> float:
+        """This config's tempo, or for tempo 0 a whole-number tempo in TEMPO_RANGE drawn from the
+        seed's own tempo stream (so the seed's lines and harmony are unaffected)."""
+        return self.tempo or float(random.Random(f"{seed}:tempo").randint(*TEMPO_RANGE))
 
     def seed_range(self) -> range:
         """'1000' -> range(1000, 1001); '1000-1100' -> range(1000, 1100)."""

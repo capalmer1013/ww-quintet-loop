@@ -1,7 +1,8 @@
+import copy
 import unittest
 from fractions import Fraction as Fr
 
-from utils.pattern import Event, _, expand, tile
+from utils.pattern import Event, _, event_paths, expand, tile
 
 
 def shape(events):
@@ -28,6 +29,21 @@ class ExpandTest(unittest.TestCase):
         for a, b in zip(events, events[1:]):
             self.assertEqual(a.start + a.beats, b.start)
         self.assertEqual(events[-1].start + events[-1].beats, Fr(7, 3))
+
+    def test_scale_steps(self):
+        self.assertEqual(shape(expand([1, "3+", ["2-", 2]], 2)),
+                         [(0, Fr(2, 3), 1), (Fr(2, 3), Fr(2, 3), "3+"), (Fr(4, 3), Fr(1, 3), "2-"), (Fr(5, 3), Fr(1, 3), 2)])
+        for bad in ("0+", "3*", "+3", "3"):
+            with self.assertRaises(ValueError):
+                expand([bad], 1)
+
+    def test_event_paths_line_up_with_events(self):
+        pattern = [_, 1, [2, _, "3+"], 0, _]
+        self.assertEqual(event_paths(pattern), [None, (1,), (2, 0), (2, 2), (3,)])
+        self.assertEqual(len(event_paths(pattern)), len(expand(pattern, 5)))
+
+    def test_hold_survives_copying(self):
+        self.assertIs(copy.deepcopy([_])[0], _)
 
     def test_invalid_elements_report_path(self):
         for bad, path in (([1, 1.5], "pattern[1]"), ([1, [2, (3,)]], "pattern[1][1]"), ([True], "pattern[0]"),

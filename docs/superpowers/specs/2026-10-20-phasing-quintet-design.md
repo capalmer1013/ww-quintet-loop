@@ -304,7 +304,7 @@ louder than the flute, and pitches on one instrument varied by about 4 dB.
 - **Tempo:** the defaults become `--tempo 60` and `--max-seconds 180`, the same room for phase
   cycles in beats. The swell target is now 6–16 s.
 - **Attacks:** every note fades in (sin²) over `ATTACK_BEATS` = 0.08 beats, capped at a quarter of
-  the note.
+  the note. (Raised to 0.15 beats, 150 ms at 60 bpm, after listening.)
 
 ## 14. Per-note hairpins replace phrase swells; quiet dynamics (added 2026-10-20)
 
@@ -322,3 +322,126 @@ volume. They are removed entirely: `Voice.swell` and `Voice.phase`, the block ga
   `top_layer`.
 - **Note cache:** each finished note (levelled, cut or sustained, then shaped) is cached by
   (sample, dynamic, frames, tempo), because cycling voices repeat identical notes.
+
+## 15. Reverb (added 2026-10-20)
+
+Post-processing to sound less MIDI-like, still standard library only (`utils/reverb.py`).
+
+- **Signal path:** a Freeverb-style reverb with mono in and stereo out.
+  1. The dry stereo mix is averaged to mono, decimated to 22.05 kHz, and scaled by `INPUT_GAIN`.
+  2. It is pre-delayed 20 ms.
+  3. It feeds 6 parallel comb filters (Freeverb tunings halved). Each takes a 2-tap FIR lowpass in
+     its feedback, `DAMPING` = 0.4, with feedback = 0.7 + 0.28 × room.
+  4. The summed combs go through 2 series allpass filters per channel (gain 0.5), with the right
+     channel's delays offset for width.
+  5. The wet signal is linearly interpolated back to 44.1 kHz, wrapping at the loop point, and
+     added to the dry mix as `amount × WET_SCALE × wet`. At amount 1, wet is about 0.7× the dry
+     level on real pieces.
+- **Speed:** every feedback delay is at least one block long, so blocks are computed with list
+  comprehensions rather than per-sample loops.
+- **Seamless loops:** the input is pre-rolled with 2 × RT60 of the piece's own ending (indexed
+  modulo the piece length), and only the last `n` frames are kept. One rendered loop therefore
+  equals a loop that follows another, which a test checks.
+- **Config:** `reverb` (amount, default 0.3; 0 = dry and byte-identical to before) and `room`
+  (0–1, default 0.8, RT60 ≈ 2.6 s). Piece files record `tempo`, `reverb` and `room` in their
+  `Config(...)` call.
+- **Stems** stay dry.
+- **Cost:** about +10 s per 2-minute piece (11 s → 21 s).
+
+## 16. Volume sines (added 2026-10-20)
+
+Each voice can have a slow sine on its volume: `voice(..., lfo=k, lfo_phase=x)`.
+
+- **Shape:** `k` whole cycles over the piece, so loops stay seamless, starting at phase `x`
+  (0 = loudest).
+- **Gain:** `10^(-LFO_DEPTH_DB * (1 - cos 2π(pos·k + x)) / 2 / 20)`, a 6 dB dip.
+- **Mixing:** the gain is applied per 512-frame block, folded into the pan gains in `mix()`. Stems
+  get it via `with_gains()`.
+- **Generation:** `k` gives a period of 10–30 s and is preferably not a divisor of the voice's
+  cycle count, so the sine is out of step with the pattern and each repeat sounds different. The
+  phase is random to 2 decimals.
+- **Difference from the removed phrase swells (section 11):** volume only (sample layers never
+  change), shallower, and deliberately unaligned with the voice's cycle.
+
+## 17. Random key, chord and tempo; voicing (added 2026-10-20)
+
+- **Harmony:** `--notes` defaults to `random`. `resolve_notes(spec, seed)` handles three forms:
+  - `random`: picks a root uniformly and a quality from `HARMONY_WEIGHTS`:
+    maj9 3, maj69 3, min9 3, min11 2, sus9 2, maj7s11 2, min69 1.5, dom9 1.5, dom7s11 1.
+  - `<root>.random`: fixes the root and picks the quality.
+  - `<root>.<quality>`: fixed, as before.
+  - Very dissonant chords (minor-major 7th, augmented, altered dominants) are excluded.
+- **Tempo:** `--tempo` defaults to 0, meaning random per seed. `Config.piece_tempo(seed)` returns a
+  whole number in `TEMPO_RANGE` = 50–70. `main.py` sets `config.tempo` per piece before
+  generating. `Config.bpm()` raises while the tempo is still 0, so a library call can't render at
+  an undefined tempo. Piece files record the chosen tempo.
+- **Separate streams:** harmony and tempo use their own `random.Random(f"{seed}:harmony")` and
+  `random.Random(f"{seed}:tempo")` streams, so fixing one doesn't change the seed's pick for the
+  other. The lines still depend on both: palette sizes follow the chord, and the tempo decides
+  which candidate fits `--max-seconds`.
+- **Voicing** (`VOICING` in `voice.py`):
+  - The bassoon plays `PitchSet.bass` (root and 5th).
+  - The horn plays `PitchSet.core` (root, 3rd or sus, 5th, 7th or 6th; a scale's core is its
+    triad).
+  - The clarinet, oboe and flute play every tone.
+  - Classical practice: colour notes stay out of the low register, where they sound muddy.
+- **Playable pitches:** palettes are limited to `Instrument.playable`, the pitches with a
+  plain-note sample at or below `MAX_LAYER` (now in `samples.py`). A test checks every quality on
+  every root for every instrument.
+
+## 18. Per-instrument layer caps (added 2026-10-20)
+
+`MAX_LAYER` becomes `MAX_LAYERS` (`samples.py`):
+
+| Instrument | Cap |
+|---|---|
+| flute, oboe, clarinet, bassoon | `mf` |
+| horn | `mp`, so it blends |
+
+- `Instrument.max_layer` caps both `Instrument.note` (via `max_dynamic`) and `Instrument.playable`.
+- Generation draws each voice's dynamic from `p` up to its instrument's cap.
+- The clarinet has no `mp` or `mf` recordings, so it plays its `p` recordings, levelled up to the
+  requested dynamic.
+
+## 19. Non-chord tones and voice leading (added 2026-10-20)
+
+- **Notation:** a pattern element may be `"k+"` or `"k-"`, meaning palette note k moved one step of
+  `PitchSet.scale` (the parent scale in `PARENT_SCALES`) up or down. `resolve_pitch` turns it into
+  a pitch. A step the instrument can't play at its layer cap stays on note k. Integers are
+  unchanged, so old piece files render byte-identically (checked on `piece_6000`).
+- **Figures** (probabilities per `Profile`):
+  - **Passing:** a slot `a` followed by `b` a 3rd away becomes `[a, "a±"]` when the scale step is a
+    playable non-chord tone strictly between them.
+  - **Neighbour:** `b` becomes `[b, "b±", b]`.
+  - **Suspension** (sustaining voices): a held note `k` becomes `"k+"` for its first half, then `k`.
+  - All non-chord tones are left by step (tested).
+  - About two thirds of random pieces contain some.
+- **Voice leading:** `parallels()` finds simultaneous motion in two voices from interval class
+  {0, 7} (unison/octave or 5th, by absolute distance mod 12) to the same class, in similar or
+  contrary motion. The timeline wraps at the loop point. Holds and rests never count.
+- **Repair:** `_repair()` greedily nudges the offending event's leaf to a neighbouring palette
+  index, using `event_paths()` to map events to pattern leaves. It skips non-chord tones and their
+  neighbouring events, and keeps an edit only if the parallel count drops. It is limited to
+  `REPAIR_STEPS` = 60; an unrepairable candidate is redrawn. Generation for 30 pieces takes about
+  0.5 s, and most candidates need no repair.
+- **Deep copy:** `_` survives `copy.deepcopy` as the same object, because the repair copies
+  patterns.
+
+## 20. Longer loops (added 2026-10-20)
+
+Each voice's loop was 2–8 s, so it repeated too often.
+
+- **Loop length:** every voice's cycle is now `CYCLE_SECONDS` = 10–16 s, rounded to whole beats at
+  the piece's tempo (9–13 beats at 50 bpm, 12–18 at 70).
+- **Moving voices:** a cycle is several equal phrase cells. Each cell is about the profile's old
+  `beats` range in length, written by the old cycle generator (`_cell`), and the walk carries on
+  across cells.
+- **Sustaining voices:** 3–5 notes split the cycle at random, each held at least 2 beats, with an
+  optional one-beat closing rest.
+- **Drift:** applied only when the drifted cycle still lasts at least 10 s.
+- **Generation order:** cycle lengths are drawn first, and the LCM check runs before any pattern is
+  written, because most draws are rejected. `MAX_ATTEMPTS` is now 100,000. 100 pieces generate in
+  about 3 s.
+- **Phasing minimum:** `MIN_DISTINCT_SPANS` drops to 3. At 50 bpm no four lengths in 9–13 beats
+  realign within 6 minutes.
+- **Piece length:** `--max-seconds` defaults to 360. Pieces run 1–6 minutes, median about 3.7.

@@ -15,18 +15,21 @@ These three are everything needed to run it. Python 3.10+ only, with no dependen
 ## Running
 
 ```bash
-make run ARGS="--notes C.lydian --seeds 1000-1010 --code"
+make run ARGS="--seeds 1000-1010 --code"
 ```
 
-This writes `out/piece_1000.wav` … `out/piece_1009.wav`, plus a `.py` file for each piece.
+This writes `out/piece_1000.wav` … `out/piece_1009.wav`, plus a `.py` file for each piece. Each seed
+picks its own key, chord and tempo; each printed line shows them.
 Run `make` to list the targets, and `make run ARGS="--help"` for every flag.
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--notes` | `C.maj7s11` | Note set: `<root>.<quality>`, e.g. `C.lydian`, `Fs.maj7s11`, `Bb.dom7` |
+| `--notes` | `random` | `random` (key and chord), `C.random` (chord on that key) or a fixed set like `C.maj9`, `Fs.maj7s11`, `Bb.lydian` |
 | `--seeds` | `0` | Seed `A`, or a range `A-B` with `B` excluded. One piece per seed |
-| `--tempo` | `60` | Beats per minute |
-| `--max-seconds` | `180` | Longest allowed piece (one full phase cycle) |
+| `--tempo` | `0` | Beats per minute; `0` = a whole-number tempo from 50 to 70, random per seed |
+| `--reverb` | `0.3` | Hall reverb amount (`0` = dry) |
+| `--room` | `0.8` | Hall size, 0–1 (`0.8` ≈ 2.6 s decay) |
+| `--max-seconds` | `360` | Longest allowed piece (one full phase cycle) |
 | `--output-dir` | `out` | Where files are written |
 | `--stems` | off | Also write `piece_<seed>_<instrument>.wav` (mono) for each voice |
 | `--code` | off | Also write `piece_<seed>.py`, which reproduces the piece |
@@ -41,7 +44,7 @@ With `--code`, each piece is also written as a script:
 ```python
 from utils import *
 
-Config(tempo=120.0)
+Config(tempo=60.0, reverb=0.3, room=0.8)
 render('piece_2000', C.lydian,
     flute    = voice([6, 0, 5], beats=4, dynamic='mp'),
     oboe     = voice([2, 3, 4], beats=6),
@@ -57,16 +60,24 @@ render('piece_2000', C.lydian,
 
 ## Voices
 
-`voice(pattern, beats, drift=0, dynamic="p")` repeats `pattern` every `beats` beats.
+`voice(pattern, beats, drift=0, dynamic="p", lfo=0, lfo_phase=0.0)` repeats `pattern` every `beats` beats.
 
 - **Cycle-length phasing:** give voices different `beats` (3 against 4 against 7).
 - **Different note counts in the same time:** 5 slots over `beats=4` against 4 over 4 gives 5:4.
 - **Reich-style drift:** `drift=k` shortens the cycle to `beats * k/(k+1)`. The voice slowly pulls
   ahead and realigns with an undrifted partner after `k+1` of its own cycles.
 - **Dynamic:** one of `pp p mp mf f ff`, setting the voice's level.
-  - No recording louder than `mp` is ever used. A louder dynamic is reached by levelling (gain),
-    keeping the soft tone.
+  - Recordings are capped per instrument (`MAX_LAYERS` in `utils/samples.py`): flute, oboe,
+    clarinet and bassoon go up to `mf`, and the horn only to `mp`, so it blends instead of turning
+    brassy. A louder dynamic is reached by levelling (gain), keeping the softer tone.
   - A note without that recording falls back to the nearest softer one.
+- **Volume sine:** `lfo=k` makes the voice's volume ebb and flow on a slow sine, `k` cycles over the
+  whole piece, starting at `lfo_phase` (0 = loudest).
+  - The dip is 6 dB.
+  - Generated voices get periods of about 10–30 s, chosen not to line up with the voice's own
+    cycle, so each repeat of a pattern sounds a little different.
+  - It's whole cycles over the piece, so loops stay seamless.
+  - `lfo=0` keeps the volume steady.
 - **Piece length:** the lowest common multiple of the five cycle lengths, so every voice realigns
   exactly at the end.
 - **Sounding:** voices are monophonic, so every note lasts until the next event starts.
@@ -75,14 +86,28 @@ render('piece_2000', C.lydian,
     middle repeats with 100 ms crossfades, and its natural release ends the note.
   - **Long notes** (1.5 s or more) swell `<>`: they rise from about −30 dB to full level 40% of
     the way through the note, then die away.
-  - **Shorter notes** fade in over 0.08 of a beat (80 ms at 60 bpm), so slower tempos get softer
+  - **Shorter notes** fade in over 0.15 of a beat (150 ms at 60 bpm), so slower tempos get softer
     attacks.
+
+## Reverb
+
+The stereo mix goes through a Freeverb-style hall reverb, written in plain Python:
+
+- **Design:** the mixed signal (one channel) feeds 6 echo-building filters with gentle
+  high-frequency damping, then 2 smoothing filters per side for a wide stereo image. A 20 ms
+  pre-delay keeps the dry notes clear.
+- **Seamless loops:** the reverb is fed the piece's own ending before its start, so the tail rings
+  over the loop point exactly as it does when the file repeats.
+- **Speed:** it runs at half the sample rate, adding about 10 s to a 2-minute piece.
+- **Stems stay dry**, for mixing elsewhere.
+- `--reverb 0` gives exactly the dry mix.
 
 ## Patterns
 
 | Element | Meaning |
 |---|---|
 | `1`, `2`, … | The voice's palette notes, lowest first. Numbers past the end wrap round |
+| `"3+"`, `"3-"` | Palette note 3 moved one step up/down the chord's parent scale (a non-chord tone) |
 | `0` | Rest |
 | `_` | Hold the previous note (or rest) through this slot |
 | `[...]` | Divide this slot equally among its elements, to any depth |
@@ -90,6 +115,61 @@ render('piece_2000', C.lydian,
 - `[1, [2, 3], _, 0]` over 4 beats: note 1, then two half-beat notes, then 2 beats of hold on the
   last note (3), then a rest.
 - A leading `_` continues the previous cycle's last note.
+- `[1, ["3-", 3], 5]`: note 1, then a passing tone stepping up into note 3, then note 5.
+
+## Harmony
+
+With `--notes random`, each seed picks a key (all 12) and an extended chord. The weights lean
+towards the lush and consonant:
+
+| Chord | On C | Weight |
+|---|---|---|
+| `maj9` | C E G B D | 3 |
+| `maj69` | C E G A D | 3 |
+| `min9` | C E♭ G B♭ D | 3 |
+| `min11` | C E♭ G B♭ F | 2 |
+| `sus9` | C F G B♭ D | 2 |
+| `maj7s11` | C E F♯ G B | 2 |
+| `min69` | C E♭ G A D | 1.5 |
+| `dom9` | C E G B♭ D | 1.5 |
+| `dom7s11` | C E F♯ G B♭ | 1 |
+
+- **Separate streams:** the harmony and the tempo each come from their own random stream for the
+  seed. Fixing one (e.g. `--tempo 60`) doesn't change what the seed picks for the other.
+- **Weights:** `HARMONY_WEIGHTS` in `utils/theory.py` sets them.
+
+## Non-chord tones and voice leading
+
+Each chord has a parent scale that supplies its non-chord tones (`PitchSet.scale`):
+
+| Chords | Parent scale |
+|---|---|
+| `maj9`, `maj69` | major |
+| `maj7s11` | lydian |
+| `min9`, `min11`, `min69` | dorian |
+| `sus9`, `dom9` | mixolydian |
+| `dom7s11` | lydian dominant |
+
+Generated lines use them in three classical figures. Each instrument's profile sets how often
+(`passing`, `neighbour`, `suspension`):
+
+- **Passing tone:** a skip of a 3rd between chord tones is filled with the scale step between them
+  on the weak half of the slot, e.g. `[2, "2+"]` then 3.
+- **Neighbour tone:** a step away and straight back, `[3, "3+", 3]`.
+- **Suspension:** a sustained note starts on the step above a chord tone, is held, then resolves
+  down by step onto it, `["3+", _, _, 3, _, _]`. This is mostly the horn, oboe and clarinet. With
+  one chord per piece there's no preparation in strict classical terms; it sounds like a held
+  appoggiatura.
+
+Generated pieces have no parallel perfect 5ths or octaves:
+
+- **The rule:** no two voices may move at the same moment from a 5th, octave or unison apart into
+  the same interval again, whether in similar or contrary motion.
+- **Enforcement:** `generate` checks the whole looping timeline. It nudges offending notes to a
+  neighbouring palette note, never touching a non-chord-tone figure, and moves on to another
+  candidate if the parallels can't be cleared.
+- **Checking a piece:** `parallels(voices, notes)` lists any parallels in a set of voices, including
+  hand-written ones.
 
 ## Palettes and spacing
 
@@ -100,15 +180,24 @@ Each voice draws only from the set's notes within its own register band:
 3. Each voice's band runs halfway to its neighbours' centres.
 
 Low voices end up an octave or a fifth apart, and higher ones closer together, loosely following
-the harmonic series. For `C.maj7s11` that gives:
+the harmonic series.
+
+Voicing keeps the colour notes up top, as in classical scoring, to limit dissonance:
+
+- The bassoon plays only the root and 5th.
+- The horn plays only core chord tones (root, 3rd or sus, 5th, 7th or 6th).
+- The 9ths, 11ths and 13ths go to the clarinet, oboe and flute.
+- Palettes only use pitches the instrument has recorded at or below its cap.
+
+For `C.maj9` that gives:
 
 | Voice | Palette |
 |---|---|
-| bassoon | C2–C3 |
-| horn | E3–G3 |
-| clarinet | B3–E4 |
-| oboe | E4–G4 |
-| flute | B4–C6 |
+| bassoon | C2 G2 C3 |
+| horn | E3 G3 B3 |
+| clarinet | B3 C4 D4 |
+| oboe | D4 E4 G4 B4 |
+| flute | B4 C5 D5 E5 G5 B5 C6 |
 
 The constants are at the top of `utils/voice.py`.
 
@@ -121,7 +210,9 @@ The constants are at the top of `utils/voice.py`.
   note), skip (two palette notes) or leap.
 - **Quick figures:** an occasional subdivision in the instrument's own style.
 - **Breathing:** rests and holds.
-- **Cycle length:** the instrument's own range of beats.
+- **Loop length:** every voice's loop lasts 10–16 s at the piece's tempo, strung from several
+  phrase cells (each about the instrument's own cell length) so the lines are long and don't
+  repeat too often.
 
 | | Moves | Quick figures | Character |
 |---|---|---|---|
@@ -133,13 +224,16 @@ The constants are at the top of `utils/voice.py`.
 
 On top of that:
 
-- 1–2 voices per piece sustain 2–3 long notes (3–6 beats each). They're chosen weighted towards
-  horn and clarinet.
-- Up to two voices drift.
-- Each voice's dynamic is `p` or `mp`.
+- 1–2 voices per piece sustain 3–5 long notes (2 beats or more each) across their loop. They're
+  chosen weighted towards horn and clarinet.
+- Up to two voices drift, but only where the loop still lasts at least 10 s.
+- Each voice's dynamic runs from `p` up to its instrument's cap: `p`–`mf` for the woodwinds and
+  bassoon, and `p`–`mp` for the horn.
+- Each voice gets a volume sine with its own period and starting point.
 
 It redraws, deterministically for that seed, until the piece fits `--max-seconds` and has at least
-4 different cycle lengths, so the voices genuinely phase.
+3 different loop lengths, so the voices genuinely phase. Long, nearby loop lengths (say 12 against
+15 s) slide past each other slowly, Reich-style. Pieces run about 1–6 minutes (median about 3.7).
 
 ## Theory helpers
 
@@ -151,7 +245,9 @@ fifths(C, 4) == [C, G, D, A];  fourths(C.dom7, 3) == [C.dom7, F.dom7, Bb.dom7]
 C.maj7s11.pitches(60, 72) == [60, 64, 66, 67, 71, 72]       # MIDI numbers in range
 ```
 
-- Chords: `maj min dim aug sus2 sus4 dom7 maj7 min7 dim7 m7b5 maj7s11`
+- Chords: `maj min dim aug sus2 sus4 dom7 maj7 min7 dim7 m7b5`
+- Extended chords: `maj9 maj69 min9 min11 sus9 min69 dom9 maj7s11 dom7s11`. `s.core` gives a
+  chord's tones without its colour notes, and `s.bass` its root and 5th.
 - Scales: `major minor dorian phrygian lydian mixolydian locrian harmonic_minor
   pentatonic_major pentatonic_minor whole_tone`
 - Intervals: `m2 M2 m3 M3 P4 TT P5 m6 M6 m7 M7`

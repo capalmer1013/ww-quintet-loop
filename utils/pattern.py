@@ -1,15 +1,27 @@
-"""Nested-list patterns: lists divide their span equally; ints index a palette, 0 rests, _ holds."""
+"""Nested-list patterns: lists divide their span equally; ints index a palette, "3+"/"3-" step off a
+palette note by one scale step, 0 rests, _ holds."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from fractions import Fraction
 
-__all__ = ["_", "Event", "expand", "tile"]
+__all__ = ["_", "Event", "expand", "tile", "event_paths", "STEP"]
+
+STEP = re.compile(r"([1-9][0-9]*)([+-])")  # "3+": palette note 3, one scale step up
 
 
 class _Hold:
+    """The single hold marker; copying it gives back the same object, so `is _` keeps working."""
+
     def __repr__(self) -> str:
         return "_"
+
+    def __copy__(self) -> _Hold:
+        return self
+
+    def __deepcopy__(self, memo) -> _Hold:
+        return self
 
 
 _ = _Hold()  # hold: extend the previous note (or rest) through this slot
@@ -20,7 +32,7 @@ _CONTINUE = "continue"  # an event that extends whatever came before the pattern
 class Event:
     start: Fraction  # beats
     beats: Fraction
-    index: int | None  # palette index (1-based), or None for a rest
+    index: int | str | None  # palette index (1-based), a step like "3+", or None for a rest
 
 
 def expand(pattern: list, span: Fraction) -> list:
@@ -51,10 +63,28 @@ def _walk(node, start: Fraction, span: Fraction, path: str, leaves: list) -> Non
         slot = span / len(node)
         for i, child in enumerate(node):
             _walk(child, start + i * slot, slot, f"{path}[{i}]", leaves)
-    elif node is _ or (type(node) is int and node >= 0):
+    elif node is _ or (type(node) is int and node >= 0) or (type(node) is str and STEP.fullmatch(node)):
         leaves.append((start, span, node))
     else:
-        raise ValueError(f"{path}: {node!r} is not a pattern element (int >= 0, _, or list)")
+        raise ValueError(f"{path}: {node!r} is not a pattern element (int >= 0, \"3+\"/\"3-\", _, or list)")
+
+
+def event_paths(pattern: list) -> list[tuple[int, ...] | None]:
+    """For each Event of expand(pattern), the index path of the leaf that starts it (None for a
+    leading hold, which continues the previous cycle)."""
+    paths: list[tuple[int, ...] | None] = []
+
+    def walk(node, path: tuple[int, ...]) -> None:
+        if isinstance(node, list):
+            for i, child in enumerate(node):
+                walk(child, path + (i,))
+        elif node is not _:
+            paths.append(path)
+        elif not paths:
+            paths.append(None)
+
+    walk(pattern, ())
+    return paths
 
 
 def tile(pattern: list, span: Fraction, total: Fraction) -> list[Event]:

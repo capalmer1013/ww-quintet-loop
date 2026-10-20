@@ -12,6 +12,9 @@ from .config import Config
 QUINTET = ("flute", "oboe", "clarinet", "horn", "bassoon")
 SAMPLE_RATE = 44100  # every sample in the library is 44.1 kHz, 16-bit, mono
 DYNAMICS = ["pp", "p", "mp", "mf", "f", "ff"]  # softest to loudest
+# loudest recorded dynamic each instrument plays (louder levels come from gain); the horn stays soft
+# so it blends rather than turning brassy
+MAX_LAYERS = {"flute": "mf", "oboe": "mf", "clarinet": "mf", "bassoon": "mf", "horn": "mp"}
 NOTE_NAMES = ["C", "Cs", "D", "Ds", "E", "F", "Fs", "G", "Gs", "A", "As", "B"]
 # Nominal seconds for each recorded length; used to pick a sample for a duration.
 LENGTH_SECONDS = {"0.25s": 0.25, "0.5s": 0.5, "1s": 1.0, "1.5s": 1.5, "long": 3.0, "very-long": 15.0, "phrase": 0.0}
@@ -70,6 +73,9 @@ class Instrument:
         self.notes = [s for s in self.samples if s.technique is None]
         self.extended = [s for s in self.samples if s.technique is not None]
         self.pitches = frozenset(s.midi for s in self.notes)  # MIDI numbers with plain-note samples
+        self.max_layer = MAX_LAYERS.get(name, "ff")
+        soft = DYNAMICS[:DYNAMICS.index(self.max_layer) + 1]
+        self.playable = frozenset(s.midi for s in self.notes if s.dynamic in soft)  # ... at or below max_layer
 
     def __repr__(self) -> str:
         return f"Instrument({self.name!r}, {len(self.notes)} notes, {len(self.extended)} extended)"

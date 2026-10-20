@@ -1,7 +1,8 @@
 import unittest
+from collections import Counter
 
-from utils.theory import (A, B, Bb, C, D, E, Eb, F, Fs, G, M3, P4, P5, As, PitchSet, fifths, fourths,
-                          parse_set)
+from utils.theory import (A, B, Bb, C, D, E, Eb, F, Fs, G, M3, P4, P5, As, HARMONY_WEIGHTS, PitchSet, fifths,
+                          fourths, parse_set, resolve_notes)
 
 
 class PitchClassTest(unittest.TestCase):
@@ -61,6 +62,52 @@ class PitchSetTest(unittest.TestCase):
         for bad in ("H.maj", "C.nope", "C"):
             with self.assertRaises(ValueError):
                 parse_set(bad)
+
+
+class HarmonyTest(unittest.TestCase):
+    def test_extended_chords(self):
+        self.assertEqual(C.maj9.pitch_classes, [C, D, E, G, B])
+        self.assertEqual(C.min11.pitch_classes, [C, Eb, F, G, Bb])
+        self.assertEqual(C.sus9.pitch_classes, [C, D, F, G, Bb])
+
+    def test_core_and_bass(self):
+        self.assertEqual(C.maj9.core, [C, E, G, B])
+        self.assertEqual(C.sus9.core, [C, F, G, Bb])
+        self.assertEqual(C.maj7s11.core, [C, E, G, B])
+        self.assertEqual(C.lydian.core, [C, E, G])
+        self.assertEqual(G.dom7.core, G.dom7.pitch_classes)
+        self.assertEqual(C.maj9.bass, [C, G])
+        self.assertEqual(B.m7b5.bass, [B, F])
+
+    def test_parent_scales(self):
+        self.assertEqual(C.maj9.scale, C.major)
+        self.assertEqual(C.min11.scale, C.dorian)
+        self.assertEqual(C.dom7s11.scale.pitch_classes, [C, D, E, Fs, G, A, Bb])
+        self.assertEqual(C.lydian.scale, C.lydian)
+        for quality in HARMONY_WEIGHTS:  # every random chord's tones belong to its parent scale
+            chord = getattr(C, quality)
+            self.assertLessEqual(set(chord.pitch_classes), set(chord.scale.pitch_classes), quality)
+
+    def test_resolve_fixed(self):
+        self.assertEqual(resolve_notes("Fs.maj9", 3), Fs.maj9)
+
+    def test_resolve_random_is_deterministic_and_varied(self):
+        picks = [resolve_notes("random", s) for s in range(600)]
+        self.assertEqual(picks[:20], [resolve_notes("random", s) for s in range(20)])
+        self.assertEqual(len({p.root for p in picks}), 12)
+        qualities = Counter(p.quality for p in picks)
+        self.assertEqual(set(qualities), set(HARMONY_WEIGHTS))
+        self.assertGreater(qualities["maj9"], qualities["dom7s11"])  # leans consonant
+
+    def test_resolve_random_chord_on_a_root(self):
+        picks = {resolve_notes("D.random", s) for s in range(50)}
+        self.assertEqual({p.root for p in picks}, {D})
+        self.assertGreater(len(picks), 3)
+
+    def test_resolve_invalid(self):
+        for bad in ("H.random", "C.nope", "nope"):
+            with self.assertRaises(ValueError):
+                resolve_notes(bad, 0)
 
 
 if __name__ == "__main__":

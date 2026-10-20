@@ -1,11 +1,15 @@
 """Generate phasing woodwind quintet pieces, one per seed. Run with --help for options."""
-from utils import Config, generate, parse_set, piece_beats, piece_code, render, seconds
+from utils import Config, generate, piece_beats, piece_code, render, resolve_notes, seconds
 
 
 def main() -> None:
     config = Config()  # defaults live on Config; every field is also a CLI flag
-    notes = parse_set(config.notes)
+    resolve_notes(config.notes, 0)  # fail fast on a bad --notes
+    requested_tempo = config.tempo
     for seed in config.seed_range():
+        config.tempo = requested_tempo
+        config.tempo = config.piece_tempo(seed)  # what generate, render and piece_code use
+        notes = resolve_notes(config.notes, seed)
         voices = generate(seed, notes, config)
         name = f"piece_{seed}"
         paths = render(name, notes, **voices)
@@ -14,7 +18,7 @@ def main() -> None:
             path.write_text(piece_code(name, notes, voices, seed))
             paths.append(path)
         length = seconds(piece_beats(voices.values()), config.tempo)
-        print(f"{name}  {length:6.2f}s  {', '.join(str(p) for p in paths)}")
+        print(f"{name}  {notes!r:<12} {config.tempo:3g} bpm  {length:6.2f}s  {', '.join(str(p) for p in paths)}")
 
 
 if __name__ == "__main__":
