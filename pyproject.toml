@@ -1,0 +1,6 @@
+[project]
+name = "ww-quintet-loop"
+version = "0.1.0"
+description = "Generate phasing woodwind quintet pieces from a bundled sample library"
+requires-python = ">=3.10"
+dependencies = []

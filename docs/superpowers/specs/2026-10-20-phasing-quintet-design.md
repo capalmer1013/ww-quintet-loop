@@ -1,6 +1,6 @@
 # Phasing chord-cloud quintet pieces — design
 
-Status: revised design approved in conversation 2026-10-20; awaiting written-spec review.
+Status: implemented 2026-10-20.
 
 ## Goal
 
@@ -30,7 +30,8 @@ extensibility.
 - Instruments other than the quintet; plugin-style roles or part classes.
 - Chord progressions within a piece.
 - Polyphony within an instrument.
-- Per-note dynamics or extended techniques (one dynamic per voice, plain-note samples only).
+- Extended techniques (plain-note samples only).
+- Phrase-level swells (tried in section 11, removed in section 14).
 - Wrapping release tails across the loop point.
 
 ## Layout
@@ -114,15 +115,15 @@ all realign at the end and the file loops seamlessly.
 
 ### Register spacing (palettes)
 
-- Fundamental `F` = the set's root in MIDI octave 2 (`36 ≤ F < 48`; C → 36).
-- Each voice is centred on a partial of `F`: bassoon 2, horn 3, clarinet 4, oboe 6, flute 8,
-  i.e. `F + round(12 * log2(p))` semitones (C: C3, G3, C4, G4, C5). Lower neighbours sit an
-  octave/fifth apart; upper ones closer, loosely following the harmonic series.
-- If a centre is outside the instrument's sampled range it moves by octaves into range.
-- Palette = `set.pitches(centre - 5, centre + 7)` within the instrument's range. If that has
-  fewer than 3 notes, the window widens a semitone each side until it has 3 (or reaches the range).
-- These constants (partials, window) live at the top of `voice.py` and are tuned against the
-  Lydian / maj7#11 test piece.
+- Fundamental `F` = the set's root nearest C2 (G1 31 … F♯2 42).
+- Voice centres sit on partials of `F`: bassoon 2, horn 3, clarinet 4, oboe 6, flute 8,
+  i.e. `F + round(12 * log2(p))` (C: C3, G3, C4, G4, C5).
+- Each voice owns the band from halfway to the centre below to halfway to the centre above
+  (bassoon reaches an octave below its centre, flute an octave above), so bands are wide at the
+  bottom and narrow on top, loosely following the harmonic series.
+- Palette = the set's tones in the band that the instrument has plain-note samples for. If that
+  has fewer than 3 notes, the band widens a semitone each side until it does (or covers the range).
+- These constants live at the top of `voice.py` and are tuned against the Lydian / maj7#11 test.
 
 Pattern index `k` → `palette[(k - 1) % len(palette)]`.
 
@@ -138,8 +139,8 @@ For each voice, in fixed order flute, oboe, clarinet, horn, bassoon:
 4. With probability ~0.2, a drift `k` from {8, 12, 16, 24}; at most two drifting voices.
 5. `dynamic` from the instrument's available dynamics among `p mp mf`.
 
-If the piece length exceeds `config.max_seconds`, keep drawing whole new voice sets from the same
-`Random` until it fits (deterministic for a given seed). Probabilities are constants at the top of
+If the piece length exceeds `config.max_seconds`, or fewer than 4 voices have distinct cycle spans,
+keep drawing whole new voice sets from the same `Random` until it fits (deterministic for a given seed). Probabilities are constants at the top of
 `voice.py`.
 
 ## 4. Rendering and output (`utils/render.py`)
@@ -246,3 +247,78 @@ names in `render`, bad `--seeds` / `--notes`. `AttributeError` for unknown quali
 `make run ARGS="--notes C.maj7s11 --seeds 1000-1005 --code"` and the same with `C.lydian`; the user
 listens to judge whether the result matches the intended chord-cloud / phasing character. Palette
 and generation constants are tuned from that feedback.
+
+## 11. Swells and sustained notes (added 2026-10-20 after the first listening test)
+
+The first pieces sounded too "square": every voice held one dynamic, and notes stopped at the end
+of their samples.
+
+- **Swells:** `voice(..., swell=m, phase=x)`.
+  - The voice's level follows a raised-cosine `<>` lasting `m` of its cycles, starting at phase `x`
+    (0 = quiet point, 0.5 = peak).
+  - Gain runs from −9 dB to 0 dB. It is applied per 512-frame block, folded into the pan gains in
+    `mix()`, and applied separately for stems.
+  - Each note's sample layer is the peak dynamic stepped down by `round((1 - level) * 2)`.
+  - `render` raises `ValueError` if `m` does not divide the voice's cycle count, because the loop
+    would not be seamless.
+  - Generation gives every voice a swell: `m` is a divisor of its cycle count giving 4–12 s
+    (else the one nearest 8 s), phase is random to 2 decimals, and the peak is drawn from
+    `mp mf f`.
+- **Sustain:** a note longer than its sample plays:
+  1. the attack (the first 0.3 s, or the first quarter of the sample),
+  2. the middle, repeated with 100 ms equal-power crossfades,
+  3. the release (the last 0.6 s, or the last 35% of the sample),
+
+  trimmed to exactly the note length. A note shorter than its sample is cut with a fade of 10% of
+  the note, clamped to 10–150 ms.
+- **Sustaining voices:** each piece has 1–2. A sustaining voice has 2–3 notes of 3–6 one-beat slots
+  each (a note plus holds), plus an optional one-beat rest; its `beats` is the slot count.
+
+## 12. Levelling (added 2026-10-20)
+
+The library's recording levels are not calibrated. At the same dynamic the bassoon was 10–14 dB
+louder than the flute, and pitches on one instrument varied by about 4 dB.
+
+- `leveled(sample, dynamic)` scales each sample so that the RMS of its loudest 0.3 s equals
+  `LEVEL_REF_DB` (−24 dBFS) + `DYNAMIC_DB[dynamic]` + `INSTRUMENT_TRIM_DB[instrument]`.
+- The dynamic offsets are `pp` −12, `p` −8, `mp` −4, `mf` 0, `f` +3, `ff` +6 dB.
+- Levelling uses the requested dynamic, so a fallback sample (e.g. clarinet `mf`) plays at the
+  level asked for.
+- The result is cached per (sample, dynamic).
+
+## 13. Instrument idioms, horn tone, tempo and attacks (added 2026-10-20)
+
+- **Idioms:** `PROFILES` in `voice.py` gives each instrument its own character.
+  - **Melodic walk:** a note moves from the previous one with these weights (repeat / step / skip /
+    leap): flute 10/50/25/15, oboe 15/60/20/5, clarinet 10/25/45/20, horn 50/15/30/5,
+    bassoon 25/25/15/35. Bassoon octave leaps are weighted ×3.
+  - **Anchor notes:** tones weighted ×2 — horn root and 5th, bassoon root.
+  - **Quick figures:** run (flute), pair (oboe), arpeggio (clarinet), repeat (horn), bounce
+    (bassoon).
+  - **Rhythm:** each profile also sets its rest and hold chances, slot range and beat range.
+  - **Sustainers:** chosen weighted by `Profile.sustain` (horn and clarinet 3, oboe and bassoon 2,
+    flute 1).
+- **Horn tone:** `Profile.top_layer` caps the recorded dynamic used. The horn uses at most `mf`,
+  because its `ff` samples measure about 35% brighter. Levelling still uses the requested dynamic,
+  so a horn can be loud without sounding brassy.
+- **Tempo:** the defaults become `--tempo 60` and `--max-seconds 180`, the same room for phase
+  cycles in beats. The swell target is now 6–16 s.
+- **Attacks:** every note fades in (sin²) over `ATTACK_BEATS` = 0.08 beats, capped at a quarter of
+  the note.
+
+## 14. Per-note hairpins replace phrase swells; quiet dynamics (added 2026-10-20)
+
+Listening showed that the phrase-level swells (section 11) made notes appear out of nowhere at full
+volume. They are removed entirely: `Voice.swell` and `Voice.phase`, the block gains in `mix()`, and
+`swelled()`.
+
+- **Long notes:** any note of `LONG_NOTE_SECONDS` = 1.5 s or more is shaped `<>` by `hairpin()`.
+  The gain curve is sin² warped so that it peaks at 40% of the note, with a floor of −30 dB at both
+  ends.
+- **Short notes:** these keep the tempo-scaled attack fade.
+- **Dynamics:** generated voices use `p` or `mp`, and `Voice`'s default dynamic is now `p`.
+- **Layer cap:** `MAX_LAYER = "mp"` is the loudest recorded dynamic ever used. `Instrument.note`
+  takes `max_dynamic` and falls back only to softer layers. This replaces the horn-only
+  `top_layer`.
+- **Note cache:** each finished note (levelled, cut or sustained, then shaped) is cached by
+  (sample, dynamic, frames, tempo), because cycling voices repeat identical notes.
