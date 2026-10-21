@@ -22,7 +22,7 @@ Install once:
 make sync
 ```
 
-Then generate:
+Then `make run` on its own makes one new piece, seeded from the clock. Or generate a range of seeds:
 
 ```bash
 make run ARGS="--seeds 1000-1010 --code"
@@ -35,7 +35,7 @@ Run `make` to list the targets, and `make run ARGS="--help"` for every flag.
 | Flag | Default | Meaning |
 |---|---|---|
 | `--notes` | `random` | `random` (key and chord), `C.random` (chord on that key) or a fixed set like `C.maj9`, `Fs.maj7s11`, `Bb.lydian` |
-| `--seeds` | `0` | Seed `A`, or a range `A-B` with `B` excluded. One piece per seed |
+| `--seeds` | `now` | Seed `A`, a range `A-B` with `B` excluded, or `now`: one piece seeded from the current Unix time in hundredths of a second |
 | `--tempo` | `0` | Beats per minute; `0` = a whole-number tempo from 50 to 70, random per seed |
 | `--reverb` | `0.3` | Hall reverb amount (`0` = dry) |
 | `--room` | `0.8` | Hall size, 0–1 (`0.8` ≈ 2.6 s decay) |

@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import os
 import random
 import sys
+import time
 from dataclasses import InitVar, dataclass, field, fields
 from pathlib import Path
 from typing import ClassVar
 
 DEFAULT_SAMPLE_ROOT = Path(__file__).resolve().parents[2] / "samples"  # the repository's samples/
 TEMPO_RANGE = (50, 70)  # bpm, inclusive, when the tempo is random per seed
+TIME_SEEDS_PER_SECOND = 100  # --seeds now: the Unix time in hundredths of a second
+PIECE_NAME = "piece_{seed}"
 
 
 @dataclass
@@ -27,7 +31,8 @@ class Config:
         default="random",
         metadata={"help": "note set: random (key and chord), C.random (chord), or e.g. C.maj9, Fs.maj7s11, Bb.lydian"},
     )
-    seeds: str = field(default="0", metadata={"help": "seed or range A-B (B exclusive); one piece per seed"})
+    seeds: str = field(default="now", metadata={
+        "help": "seed, range A-B (B exclusive), or now (one piece seeded from the time); one piece per seed"})
     reverb: float = field(default=0.3, metadata={"help": "hall reverb amount (0 = dry)"})
     room: float = field(default=0.8, metadata={"help": "hall size, 0-1 (0.8 is about a 2.6 s decay)"})
     master: bool = field(
@@ -79,9 +84,26 @@ class Config:
         return self.tempo or float(random.Random(f"{seed}:tempo").randint(*TEMPO_RANGE))
 
     def seed_range(self) -> range:
-        """'1000' -> range(1000, 1001); '1000-1100' -> range(1000, 1100)."""
+        """'1000' -> range(1000, 1001); '1000-1100' -> range(1000, 1100); 'now' -> one claimed time seed."""
+        if self.seeds == "now":
+            seed = self.claim_time_seed()
+            return range(seed, seed + 1)
         start, sep, end = self.seeds.partition("-")
         try:
             return range(int(start), int(end) if sep else int(start) + 1)
         except ValueError:
-            raise ValueError(f"--seeds must be A or A-B, got {self.seeds!r}") from None
+            raise ValueError(f"--seeds must be A, A-B or now, got {self.seeds!r}") from None
+
+    def claim_time_seed(self) -> int:
+        """The current Unix time in hundredths of a second, as a seed. The seed is claimed by creating
+        its output file exclusively, so runs started in the same instant (say, in parallel from a
+        script) each move on to the next free seed instead of sharing one."""
+        seed = time.time_ns() // (10**9 // TIME_SEEDS_PER_SECOND)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        while True:
+            path = self.output_dir / f"{PIECE_NAME.format(seed=seed)}.wav"
+            try:
+                os.close(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+                return seed
+            except FileExistsError:
+                seed += 1

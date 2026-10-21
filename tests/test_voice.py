@@ -228,6 +228,30 @@ class RearticulationTest(unittest.TestCase):
                     self.assertLessEqual(float(e.beats), cap + 1e-6, (s, name))  # 60 bpm: beats = seconds
 
 
+class TimeSeedTest(unittest.TestCase):
+    def test_now_claims_distinct_increasing_seeds(self):
+        import tempfile
+        import time
+        from pathlib import Path
+
+        out = Path(tempfile.mkdtemp())
+        config = Config(argv=[], tempo=60, seeds="now", output_dir=out)
+        before = time.time_ns() // 10**7
+        seeds = [config.seed_range()[0] for _ in range(5)]  # faster than the 10 ms tick: would collide
+        self.assertEqual(len(set(seeds)), 5)
+        self.assertGreaterEqual(min(seeds), before)
+        self.assertTrue(all(isinstance(s, int) for s in seeds))
+        self.assertTrue(all((out / f"piece_{s}.wav").exists() for s in seeds))  # each claimed
+        Config(argv=[], tempo=60)
+
+    def test_explicit_seeds_unchanged(self):
+        self.assertEqual(Config(argv=[], tempo=60, seeds="5-8").seed_range(), range(5, 8))
+        self.assertEqual(Config(argv=[], tempo=60, seeds="42").seed_range(), range(42, 43))
+        with self.assertRaises(ValueError):
+            Config(argv=[], tempo=60, seeds="soon").seed_range()
+        Config(argv=[], tempo=60)
+
+
 class TempoTest(unittest.TestCase):
     def test_random_per_seed(self):
         config = Config(argv=[], tempo=0)

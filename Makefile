@@ -5,7 +5,8 @@ ARGS ?=
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-7s %s\n", $$1, $$2}'
-	@echo '  e.g. make run ARGS="--seeds 0-10 --code"'
+	@echo '  make run on its own makes one new piece seeded from the clock'
+	@echo '  e.g. make run ARGS="--seeds 0-10 --code"; make run ARGS="--help" for every flag'
 
 sync: ## Install the project and its dependencies (uv)
 	uv sync
