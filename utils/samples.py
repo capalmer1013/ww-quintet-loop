@@ -43,6 +43,11 @@ class Sample:
     def midi(self) -> int:
         return note_to_midi(self.note)
 
+    @property
+    def seconds(self) -> float:
+        """Actual duration, read from the file header (the length in the name is only nominal)."""
+        return _frames(self.path) / SAMPLE_RATE
+
     def load(self) -> array:
         """16-bit mono frames as array('h'). Cached; do not modify the result in place."""
         return _read_wav(self.path)
@@ -108,23 +113,31 @@ class Instrument:
     def note(self, note: str, dynamic: str = "mf", length: str | float = "1s", max_dynamic: str = "ff") -> Sample:
         """One plain note, falling back to the nearest recorded dynamic no louder than max_dynamic.
 
-        length is a recorded length ("0.25s", "long", ...) or a duration in seconds. A duration, or
-        a recorded length this note lacks, picks the shortest recorded length that covers it
-        (else the longest available).
+        length is a recorded length ("0.25s", "long", ...) or a duration in seconds.
+        - A recorded length picks that recording at the nearest dynamic (else falls back as below,
+          using its nominal seconds).
+        - A duration picks, at the nearest dynamic, the shortest recording whose actual length
+          covers it. If no allowed dynamic has one that long, it takes the actually-longest
+          recording, preferring nearer dynamics, so long notes need as little sustaining as possible.
         """
         target = min(DYNAMICS.index(dynamic), DYNAMICS.index(max_dynamic))
         allowed = DYNAMICS[:DYNAMICS.index(max_dynamic) + 1]
-        seconds = LENGTH_SECONDS[length] if isinstance(length, str) else length
-        for dyn in sorted(allowed, key=lambda d: (abs(DYNAMICS.index(d) - target), -DYNAMICS.index(d))):
-            matches = self.find(note, dyn)
-            if not matches:
-                continue
-            exact = [s for s in matches if s.length == length]
+        nearest = sorted(allowed, key=lambda d: (abs(DYNAMICS.index(d) - target), -DYNAMICS.index(d)))
+        by_dynamic = [(d, self.find(note, d)) for d in nearest]
+        by_dynamic = [(d, matches) for d, matches in by_dynamic if matches]
+        if not by_dynamic:
+            raise KeyError(f"{self.name} has no sample for {note}")
+        if isinstance(length, str):
+            exact = [s for s in by_dynamic[0][1] if s.length == length]
             if exact:
                 return exact[0]
-            by_length = sorted(matches, key=lambda s: LENGTH_SECONDS[s.length])
-            return next((s for s in by_length if LENGTH_SECONDS[s.length] >= seconds), by_length[-1])
-        raise KeyError(f"{self.name} has no sample for {note}")
+        seconds = LENGTH_SECONDS[length] if isinstance(length, str) else length
+        for _d, matches in by_dynamic:
+            covering = sorted((s for s in matches if s.seconds >= seconds), key=lambda s: s.seconds)
+            if covering:
+                return covering[0]
+        rank = {d: i for i, (d, _m) in enumerate(by_dynamic)}
+        return max((s for _d, matches in by_dynamic for s in matches), key=lambda s: (s.seconds, -rank[s.dynamic]))
 
 
 _instruments: dict[tuple[Path, str], Instrument] = {}
@@ -137,6 +150,12 @@ def instrument(name: str, config: Config | None = None) -> Instrument:
     if key not in _instruments:
         _instruments[key] = Instrument(name, config)
     return _instruments[key]
+
+
+@lru_cache(maxsize=None)
+def _frames(path: Path) -> int:
+    with wave.open(str(path)) as w:
+        return w.getnframes()
 
 
 @lru_cache(maxsize=None)

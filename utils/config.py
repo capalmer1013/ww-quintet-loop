@@ -27,6 +27,7 @@ class Config:
     seeds: str = field(default="0", metadata={"help": "seed or range A-B (B exclusive); one piece per seed"})
     reverb: float = field(default=0.3, metadata={"help": "hall reverb amount (0 = dry)"})
     room: float = field(default=0.8, metadata={"help": "hall size, 0-1 (0.8 is about a 2.6 s decay)"})
+    master: bool = field(default=True, metadata={"help": "EQ, compress and loudness-normalise the mix for small speakers"})
     max_seconds: float = field(default=360.0, metadata={"help": "longest allowed piece (one full phase cycle)"})
     output_dir: Path = field(default=Path("out"), metadata={"help": "where pieces are written"})
     stems: bool = field(default=False, metadata={"help": "also write one mono WAV per instrument"})

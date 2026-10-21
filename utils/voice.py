@@ -10,8 +10,8 @@ from fractions import Fraction
 from functools import reduce
 
 from .config import Config
-from .pattern import _, _CONTINUE, STEP, event_paths, expand
-from .samples import DYNAMICS, QUINTET, Instrument, instrument
+from .pattern import _, _CONTINUE, STEP, event_paths, expand, leaves
+from .samples import DYNAMICS, QUINTET, SAMPLE_RATE, Instrument, instrument, midi_to_note
 from .theory import PitchSet
 
 __all__ = ["Voice", "voice", "piece_beats", "palette", "generate", "Profile", "PROFILES", "resolve_pitch",
@@ -38,7 +38,7 @@ class Profile:
     hold: float  # chance a slot holds the previous note
     slots: tuple[int, int]  # slots per phrase cell, inclusive
     beats: tuple[int, int]  # phrase cell length in beats, inclusive (a cycle strings several cells)
-    sustain: float  # relative chance of being one of the piece's sustaining voices
+    sustain: float  # relative chance of being a sustaining voice (follows how long its recordings last)
     anchors: tuple[int, ...] = ()  # semitones above the root weighted x2 (0 root, 7 fifth)
     octave: float = 1.0  # extra weight on leaping exactly an octave
     passing: float = 0.0  # chance a skip of a 3rd is filled with a passing tone
@@ -47,30 +47,32 @@ class Profile:
 
 
 PROFILES = {
-    "flute": Profile((10, 50, 25, 15), 0.20, "run", (3, 4), 0.05, 0.10, (3, 6), (2, 8), 1,
+    "flute": Profile((10, 50, 25, 15), 0.20, "run", (3, 4), 0.05, 0.10, (3, 6), (2, 8), 2.5,
                      passing=0.5, neighbour=0.25, suspension=0.15),
-    "oboe": Profile((15, 60, 20, 5), 0.10, "pair", (2, 2), 0.20, 0.20, (2, 5), (3, 8), 2,
+    "oboe": Profile((15, 60, 20, 5), 0.10, "pair", (2, 2), 0.20, 0.20, (2, 5), (3, 8), 0.5,
                     passing=0.45, neighbour=0.2, suspension=0.35),
     "clarinet": Profile((10, 25, 45, 20), 0.15, "arpeggio", (2, 4), 0.10, 0.15, (2, 6), (2, 8), 3,
                         passing=0.45, neighbour=0.15, suspension=0.3),
     "horn": Profile((50, 15, 30, 5), 0.12, "repeat", (2, 3), 0.10, 0.25, (2, 5), (3, 8), 3,
                     anchors=(0, 7), passing=0.1, neighbour=0.05, suspension=0.45),
-    "bassoon": Profile((25, 25, 15, 35), 0.12, "bounce", (2, 2), 0.15, 0.10, (2, 6), (2, 8), 2,
+    "bassoon": Profile((25, 25, 15, 35), 0.12, "bounce", (2, 2), 0.15, 0.10, (2, 6), (2, 8), 1,
                        anchors=(0,), octave=3.0, passing=0.3, neighbour=0.08, suspension=0.1),
 }
 REPAIR_STEPS = 60  # nudges allowed to clear a candidate of parallel 5ths/octaves
-CYCLE_SECONDS = (10, 16)  # each voice's loop, at the piece's tempo (rounded to whole beats)
+CYCLE_SECONDS = (6, 10)  # each voice's loop, at the piece's tempo (rounded to whole beats)
 DRIFT_CHANCE, DRIFTS, MAX_DRIFTING = 0.2, (8, 12, 16, 24), 2  # drift is kept only if the cycle stays in range
 MIN_DISTINCT_SPANS = 3  # at least this many different cycle lengths, so the voices phase
 MAX_ATTEMPTS = 100_000  # cycle-length draws are cheap; patterns are only written for ones that fit
 # sustaining voices: a few long notes filling the cycle
 SUSTAINERS = (1, 2)  # voices per piece, inclusive
-SUSTAIN_NOTES = (3, 5)  # notes per cycle, inclusive; each held at least 2 beats
+SUSTAIN_NOTES = (2, 4)  # notes per cycle, inclusive (fewer if the cycle is short)
+SUSTAIN_MIN_BEATS = 3  # each sustained note is held at least this long
 P_SUSTAIN_REST = 0.3  # chance of a one-beat rest closing the cycle
 GEN_SOFTEST = "p"  # generated dynamics run from this up to each instrument's max_layer
 
 # --- volume sine (LFO): each voice ebbs and flows on its own slow sine, out of step with its cycle ---
-LFO_DEPTH_DB = 6.0  # quietest point, relative to the loudest
+LFO_DEPTH_DB = 12.0  # quietest point, relative to the loudest
+LFO_PEAK_DB = -4.0  # the loudest point, relative to the voice's level
 LFO_SECONDS = (10.0, 30.0)  # preferred period; must still fit a whole number of times in the piece
 
 
@@ -104,11 +106,12 @@ class Voice:
         return Fraction(self.beats)
 
     def gain(self, position: float) -> float:
-        """Volume-sine gain at a position through the piece (0-1): between -LFO_DEPTH_DB and 1."""
+        """Volume-sine gain at a position through the piece (0-1): from LFO_PEAK_DB down by
+        LFO_DEPTH_DB."""
         if not self.lfo:
             return 1.0
         dip = (1 - math.cos(2 * math.pi * (position * self.lfo + self.lfo_phase))) / 2
-        return 10 ** (-LFO_DEPTH_DB * dip / 20)
+        return 10 ** ((LFO_PEAK_DB - LFO_DEPTH_DB * dip) / 20)
 
     def code(self) -> str:
         args = [repr(self.pattern), f"beats={self.beats}"]
@@ -271,12 +274,12 @@ def _sustain_pattern(walk: _Walk, beats: int) -> list:
     above, held, resolving down onto the note)."""
     rng, p = walk.rng, walk.profile
     rest = int(rng.random() < P_SUSTAIN_REST and beats >= 7)  # a closing one-beat breath
-    count = min(rng.randint(*SUSTAIN_NOTES), (beats - rest) // 2)
-    # held lengths: a random split of the remaining beats into `count` parts of at least 2 each
-    extra = beats - rest - 2 * count
+    count = max(1, min(rng.randint(*SUSTAIN_NOTES), (beats - rest) // SUSTAIN_MIN_BEATS))
+    # held lengths: a random split of the remaining beats into `count` parts of SUSTAIN_MIN_BEATS+
+    extra = beats - rest - SUSTAIN_MIN_BEATS * count
     bars = sorted(rng.sample(range(extra + count - 1), count - 1))
     edges = [-1, *bars, extra + count - 1]
-    helds = [2 + b - a - 1 for a, b in zip(edges, edges[1:])]
+    helds = [SUSTAIN_MIN_BEATS + b - a - 1 for a, b in zip(edges, edges[1:])]
     slots: list = []
     for i, held in enumerate(helds):
         k = walk.next() if i else walk.cur
@@ -364,6 +367,49 @@ def _repair(rng: random.Random, voices: dict[str, Voice], notes: PitchSet, sizes
     return voices if not found else None
 
 
+def _max_beats(inst: Instrument, midi: int, dynamic: str, beat_seconds: Fraction) -> Fraction:
+    """The longest this pitch can be held without the sample stuttering or running out."""
+    from .render import sustainable_frames  # (render imports this module)
+    sample = inst.note(midi_to_note(midi), dynamic, 1e9, max_dynamic=inst.max_layer)  # the longest
+    return Fraction(sustainable_frames(round(sample.seconds * SAMPLE_RATE)), SAMPLE_RATE) / beat_seconds
+
+
+def _rearticulate(v: Voice, inst: Instrument, notes: PitchSet, beat_seconds: Fraction) -> Voice:
+    """Re-attack notes held longer than the instrument can sustain them: a hold that would carry a
+    note past its limit sounds the note again, and a single slot that is itself too long splits
+    into repeated notes."""
+    pattern = copy.deepcopy(v.pattern)
+    tones = palette(notes, inst)
+    limit = {}
+
+    def most(index) -> Fraction:
+        m = resolve_pitch(index, tones, notes, inst.playable)
+        if m not in limit:
+            limit[m] = _max_beats(inst, m, v.dynamic, beat_seconds)
+        return limit[m]
+
+    current, held = None, Fraction(0)
+    for path, _start, beats, leaf in leaves(pattern, v.span):
+        if leaf is _ and current is not None:
+            if held + beats <= most(current):
+                held += beats
+                continue
+            leaf = current  # this hold re-attacks the note
+        if leaf is _ or leaf == 0:
+            current, held = None, Fraction(0)
+            continue
+        parts = math.ceil(beats / most(leaf))
+        _set(pattern, path, leaf if parts == 1 else [leaf] * parts)
+        current, held = leaf, beats / parts
+    return replace(v, pattern=pattern)
+
+
+def _set(pattern: list, path: tuple[int, ...], value) -> None:
+    for i in path[:-1]:
+        pattern = pattern[i]
+    pattern[path[-1]] = value
+
+
 def _pick_sustainers(rng: random.Random) -> set[str]:
     """1-2 voices, weighted by each Profile.sustain."""
     pool, chosen = list(QUINTET), set()
@@ -417,6 +463,7 @@ def generate(seed: int, notes: PitchSet, config: Config | None = None) -> dict[s
         voices = _repair(rng, voices, notes, {n: len(t) for n, t in palettes.items()}, config)
         if voices is None:
             continue
+        voices = {n: _rearticulate(v, instrument(n, config), notes, beat_seconds) for n, v in voices.items()}
         return {
             name: replace(v, lfo=_lfo(rng, int(total / v.span), float(total * beat_seconds)),
                           lfo_phase=round(rng.random(), 2) % 1)

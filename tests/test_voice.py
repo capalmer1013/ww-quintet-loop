@@ -3,7 +3,7 @@ from fractions import Fraction as Fr
 
 from utils import (QUINTET, Config, C, Fs, B, _, expand, generate, instrument, midi_to_note, palette, parallels,
                    piece_beats, resolve_notes, resolve_pitch, voice)
-from utils.voice import LOW_TO_HIGH
+from utils.voice import LFO_DEPTH_DB, LFO_PEAK_DB, LOW_TO_HIGH
 
 Config(argv=[], tempo=60)
 
@@ -39,10 +39,11 @@ class VoiceTest(unittest.TestCase):
 class LfoTest(unittest.TestCase):
     def test_gain_range_and_wrap(self):
         v = voice([1], beats=4, lfo=3, lfo_phase=0.0)
-        self.assertAlmostEqual(v.gain(0), 1)
-        self.assertAlmostEqual(v.gain(1 / 6), 10 ** (-6 / 20))  # quietest half a sine cycle in
+        self.assertAlmostEqual(v.gain(0), 10 ** (LFO_PEAK_DB / 20))  # loudest
+        self.assertAlmostEqual(v.gain(1 / 6), 10 ** ((LFO_PEAK_DB - LFO_DEPTH_DB) / 20))  # quietest, half a cycle in
         self.assertAlmostEqual(v.gain(0.2), v.gain(1.2))  # whole cycles: seamless loop
-        self.assertTrue(all(10 ** (-6 / 20) - 1e-9 <= v.gain(i / 100) <= 1 for i in range(100)))
+        low, high = 10 ** ((LFO_PEAK_DB - LFO_DEPTH_DB) / 20), 10 ** (LFO_PEAK_DB / 20)
+        self.assertTrue(all(low - 1e-9 <= v.gain(i / 100) <= high + 1e-9 for i in range(100)))
         self.assertEqual(voice([1], beats=4).gain(0.3), 1.0)
 
     def test_invalid(self):
@@ -190,6 +191,24 @@ class ParallelsTest(unittest.TestCase):
             self.assertEqual(parallels(generate(s, notes), notes), [], s)
 
 
+class RearticulationTest(unittest.TestCase):
+    def test_no_note_outlasts_what_its_instrument_can_sustain(self):
+        from utils.render import sustainable_frames
+        for s in range(20):
+            notes = resolve_notes("random", s)
+            v = generate(s, notes)
+            for name, x in v.items():
+                inst = instrument(name)
+                tones = palette(notes, inst)
+                for e in expand(x.pattern, x.span):
+                    if not e.index:
+                        continue
+                    m = resolve_pitch(e.index, tones, notes, inst.playable)
+                    longest = inst.note(midi_to_note(m), x.dynamic, 1e9, max_dynamic=inst.max_layer)
+                    cap = sustainable_frames(round(longest.seconds * 44100)) / 44100
+                    self.assertLessEqual(float(e.beats), cap + 1e-6, (s, name))  # 60 bpm: beats = seconds
+
+
 class TempoTest(unittest.TestCase):
     def test_random_per_seed(self):
         config = Config(argv=[], tempo=0)
@@ -223,20 +242,30 @@ class GenerateTest(unittest.TestCase):
             self.assertTrue(all(x.dynamic in ("p", "mp", "mf") for x in v.values()))
             self.assertIn(v["horn"].dynamic, ("p", "mp"))
 
-    def test_loops_last_10_to_16_seconds_at_any_tempo(self):
+    def test_loops_last_6_to_10_seconds_at_any_tempo(self):
         for tempo in (50, 60, 70):
             config = Config(argv=[], tempo=tempo)
             for s in range(15):
                 v = generate(s, resolve_notes("random", s), config)
                 for x in v.values():
-                    self.assertTrue(10 <= x.span * 60 / tempo <= 16, (tempo, s, x.span))
+                    self.assertTrue(6 <= x.span * 60 / tempo <= 10, (tempo, s, x.span))
                 self.assertLessEqual(piece_beats(v.values()) * 60 / tempo, 360)
         Config(argv=[], tempo=60)
 
     def test_sustainers(self):
         for s in range(30):
             v = generate(s, C.lydian)
-            longest = {n: max(e.beats for e in expand(x.pattern, x.span) if e.index) for n, x in v.items()}
+            # a sustained tone may be re-attacked where the recordings can't hold it: measure same-pitch runs
+            longest = {}
+            for n, x in v.items():
+                runs, last = [], None
+                for e in expand(x.pattern, x.span):
+                    if e.index and e.index == last:
+                        runs[-1] += e.beats
+                    else:
+                        runs.append(e.beats if e.index else 0)
+                    last = e.index
+                longest[n] = max(runs)
             self.assertGreaterEqual(sum(b >= Fr(5, 2) for b in longest.values()), 1, s)  # 3+ beats, less any drift
         Config(argv=[], tempo=60)
 

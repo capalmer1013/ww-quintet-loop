@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 from utils import (SAMPLE_RATE, Config, C, _, hairpin, instrument, leveled, loudness_db, midi_to_note, palette,
-                   piece_code, render, sustain, voice, voice_line)
+                   loopable, piece_code, render, sustain, voice, voice_line)
 from utils.render import ATTACK_BEATS, PEAK
 
 # 4 beats at 240 bpm = 1 s
@@ -45,7 +45,12 @@ class RenderTest(unittest.TestCase):
         solo = {n: voice([0], beats=4) for n in PIECE} | {"flute": voice([1], beats=4)}
         _, frames = read(render("solo", C.maj7s11, **solo)[0])
         left, right = frames[0::2], frames[1::2]
-        self.assertGreater(sum(map(abs, left)), 2 * sum(map(abs, right)))
+        self.assertGreater(sum(map(abs, left)), 1.5 * sum(map(abs, right)))
+
+    def test_mild_seating(self):
+        from utils.render import PAN
+        self.assertTrue(all(abs(p) <= 0.4 for p in PAN.values()))
+        self.assertTrue(abs(PAN["horn"]) <= 0.1 and abs(PAN["bassoon"]) <= 0.1)
 
     def test_line_cuts_and_rests(self):
         horn = instrument("horn")
@@ -68,10 +73,28 @@ class RenderTest(unittest.TestCase):
         rms = lambda a: (sum(x * x for x in a) / len(a)) ** 0.5  # noqa: E731
         self.assertGreater(rms(out[n // 2 - 4410:n // 2 + 4410]), 0.3 * rms(sample))  # still sounding mid-note
 
-    def test_long_note_line(self):
+    def test_loopable_only_when_it_will_not_stutter(self):
+        second = SAMPLE_RATE
+        self.assertTrue(loopable(array("h", [1000] * 3 * second), 6 * second))  # 2.1 s loop, ~1.5 repeats
+        self.assertFalse(loopable(array("h", [1000] * 3 * second), 12 * second))  # would need ~4.5 repeats
+        self.assertFalse(loopable(array("h", [1000] * second), 2 * second))  # 0.4 s loop: too short
+
+    def test_unloopable_long_note_plays_once_then_rests(self):
         line = voice_line(instrument("oboe"), voice([1, _, _, _], beats=16), C.maj7s11, 16, 120)  # 8 s note
         self.assertEqual(len(line), 8 * SAMPLE_RATE)
-        self.assertTrue(any(line[7 * SAMPLE_RATE:7 * SAMPLE_RATE + 4410]))
+        self.assertTrue(any(line[:SAMPLE_RATE]))
+        self.assertFalse(any(line[6 * SAMPLE_RATE:]))  # the oboe's longest sample is ~2 s: no stutter loop
+
+    def test_long_notes_get_the_actually_longest_samples(self):
+        bassoon = instrument("bassoon")
+        chosen = bassoon.note("G2", "mf", 1.4, max_dynamic="mf")
+        candidates = [s for d in ("pp", "p", "mp", "mf") for s in bassoon.find("G2", d)]
+        covering = [s for s in candidates if s.seconds >= 1.4]
+        if covering:
+            self.assertGreaterEqual(chosen.seconds, 1.4)
+        else:
+            self.assertEqual(chosen.seconds, max(s.seconds for s in candidates))
+        self.assertGreater(chosen.seconds, 0.39)  # not the 0.39 s "0.5s" file piece_8 used
 
     def test_instruments_are_level_matched(self):
         for dyn, target in (("p", -32), ("mf", -24), ("f", -21)):
@@ -127,7 +150,8 @@ class RenderTest(unittest.TestCase):
 
         steady = horn_peaks("steady", voice([1, 1, 1, 1], beats=4))
         swaying = horn_peaks("swaying", voice([1, 1, 1, 1], beats=4, lfo=1))  # loud, quiet at 2 s, loud
-        self.assertAlmostEqual(swaying[0] / steady[0], 1, delta=0.15)
+        from utils.voice import LFO_PEAK_DB
+        self.assertAlmostEqual(swaying[0] / steady[0], 10 ** (LFO_PEAK_DB / 20), delta=0.1)  # near the peak
         self.assertLess(min(swaying[1:3]), 0.75 * steady[1])  # the notes either side of the trough dip
 
     def test_missing_voice(self):

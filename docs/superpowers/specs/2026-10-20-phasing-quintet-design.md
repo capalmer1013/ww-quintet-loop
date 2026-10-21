@@ -445,3 +445,85 @@ Each voice's loop was 2–8 s, so it repeated too often.
 - **Phasing minimum:** `MIN_DISTINCT_SPANS` drops to 3. At 50 bpm no four lengths in 9–13 beats
   realign within 6 minutes.
 - **Piece length:** `--max-seconds` defaults to 360. Pieces run 1–6 minutes, median about 3.7.
+
+## 21. Loop length split the difference (added 2026-10-20)
+
+- **Why:** at 10–16 s the loops were hard to hear; at 2–8 s they had been too obvious.
+- **Change:** `CYCLE_SECONDS` = 6–10 s (median about 7.9) and `SUSTAIN_NOTES` = 2–4. Each
+  sustained note lasts at least `SUSTAIN_MIN_BEATS` = 3, so a short loop holds fewer, still-long
+  notes.
+- **Result:** pieces still run 1–6 minutes, median about 4, because more combinations of shorter
+  loops realign within `--max-seconds`. Loops hold about 6 notes (median).
+
+## 22. Milder panning (added 2026-10-20)
+
+The seating changes from ±0.6 (with the horn far right) to a milder layout:
+
+| flute | clarinet | bassoon | horn | oboe |
+|---|---|---|---|---|
+| −0.35 | −0.2 | −0.05 | +0.1 | +0.35 |
+
+The high voices are spread apart and the horn and bassoon sit near the centre. It is still
+constant-power panning.
+
+## 23. No stuttering sustains (added 2026-10-20)
+
+Problem: the bassoon in `piece_8` looped a 0.16 s middle of a 0.39 s recording 7 times to fill a
+1.4 s note. The library's nominal lengths are also unreliable: `bassoon_G2_p_1.5s.wav` is actually
+0.42 s.
+
+- **Sample choice:** for a duration, `Instrument.note` uses actual lengths (`Sample.seconds`, read
+  from the WAV header). It takes the shortest recording that covers the note at the nearest
+  dynamic. If none covers it at any allowed dynamic, it takes the actually-longest recording,
+  breaking ties by dynamic distance.
+- **Looping:** `loopable()` allows a sustain loop only when the steady middle is at least
+  `MIN_LOOP_SECONDS` = 0.8 s and the stretch needs at most `MAX_LOOP_REPEATS` = 3 repeats.
+  Otherwise the sample plays once with its natural release and the note's remainder is silence.
+  The hairpin or attack is applied over the sounding part.
+- **Effect:** across the test pieces, about a third of the notes longer than their sample still
+  loop (worst case 2.5 repeats of a 0.85 s middle). The rest now play once, then rest.
+- **Compatibility:** existing piece files keep their patterns but may pick different recordings for
+  long notes, so they are no longer byte-identical with earlier renders.
+
+## 24. Deeper volume sines (added 2026-10-20)
+
+`LFO_DEPTH_DB` goes from 6 to 12 dB, so at its quietest a voice is a quarter of its loudest
+amplitude. Everything else in section 16 is unchanged.
+
+## 25. Lower sine peaks (added 2026-10-20)
+
+The sine's loudest point was too loud. `LFO_PEAK_DB` = −4 lowers the whole curve: gain is
+`10^((LFO_PEAK_DB − LFO_DEPTH_DB · dip) / 20)`, from −4 to −16 dB. Voices with `lfo=0` stay at 0 dB.
+
+## 26. Re-articulation, metric accents, mastering (added 2026-10-20)
+
+- **Re-articulation:** `_rearticulate()` runs after repair.
+  - `sustainable_frames(length)` is the longest note a recording can play: its length, plus
+    `MAX_LOOP_REPEATS` loops of its middle when that middle is long enough.
+  - A hold that would carry a note past its pitch's limit (for the actually-longest recording)
+    becomes a repeated note on the same pitch. A single slot that is itself too long splits into
+    equal repeated notes.
+  - Silent note time drops from 9.1% to 0%.
+  - Sustainer weights become flute 2.5, oboe 0.5, clarinet 3, horn 3, bassoon 1.
+- **Metric accents:** `accents(pattern)` gives a dB value per event.
+  - `_levels(n)` splits n slots into groups of 2 (one 3 if n is odd). Level 0 is the first slot,
+    level 1 the group start nearest the middle, level 2 other group starts, level 3 everything
+    else. A lone 3-group is `[0, 2, 3]`.
+  - The dB sums `ACCENT_DB = (1.0, 0.6, 0.3, 0)` down the nesting, halved per level (at most about
+    1.75 dB).
+  - It is applied per note in `_note_audio`, which is cached.
+- **Mastering** (`master.py`, `--master`, default on):
+  - **EQ:** applied to each recording before levelling. It is linear, so this equals EQ'ing the
+    mix at a fraction of the cost. It uses cascaded moving averages; measured response: −11 dB at
+    60 Hz, −3 dB at 250–330 Hz, +3.5 to +4 dB at 3–4.5 kHz.
+  - **Dynamics:** on 10 ms blocks.
+    1. Pre-gain to `TARGET_LUFS` = −16.
+    2. A 2:1 compressor from 8 dB below the target (20 ms attack, 300 ms release, circular
+       envelope).
+    3. Makeup back to the target.
+    4. A −1 dBFS limiter: each block's gain is at most its own and its neighbours' peak limits,
+       ramped linearly, so no sample exceeds the ceiling.
+  - **Loudness:** approximately EBU R128 gating, without K-weighting.
+  - **Stems** are not mastered.
+- **Measured on `piece_9000`:** −35.7 → −14.9 LUFS, peak −16.8 → −1.0 dBFS, loud-to-quiet spread
+  7.1 → 3.8 dB.

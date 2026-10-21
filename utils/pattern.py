@@ -6,9 +6,12 @@ import re
 from dataclasses import dataclass
 from fractions import Fraction
 
-__all__ = ["_", "Event", "expand", "tile", "event_paths", "STEP"]
+__all__ = ["_", "Event", "expand", "tile", "event_paths", "leaves", "accents", "STEP", "ACCENT_DB"]
 
 STEP = re.compile(r"([1-9][0-9]*)([+-])")  # "3+": palette note 3, one scale step up
+# metric accent (dB) by level within a group: its first slot, the group start nearest the middle,
+# other group starts, everything else. Each level of nesting counts half as much as the one above.
+ACCENT_DB = (1.0, 0.6, 0.3, 0.0)
 
 
 class _Hold:
@@ -85,6 +88,60 @@ def event_paths(pattern: list) -> list[tuple[int, ...] | None]:
 
     walk(pattern, ())
     return paths
+
+
+def leaves(pattern: list, span: Fraction) -> list[tuple[tuple[int, ...], Fraction, Fraction, object]]:
+    """Every leaf as (index path, start, beats, element), holds included, in time order."""
+    out = []
+
+    def walk(node, path: tuple[int, ...], start: Fraction, length: Fraction) -> None:
+        if isinstance(node, list):
+            for i, child in enumerate(node):
+                walk(child, path + (i,), start + i * length / len(node), length / len(node))
+        else:
+            out.append((path, start, length, node))
+
+    walk(pattern, (), Fraction(0), Fraction(span))
+    return out
+
+
+def _levels(n: int) -> list[int]:
+    """Metric level (index into ACCENT_DB) of each of n equal slots: groups of 2 (one 3 if n is
+    odd); the first slot strongest, the group start nearest the middle next, then other group
+    starts, then the rest. In a lone group of 3 the middle is a touch stronger than the last."""
+    if n == 1:
+        return [0]
+    if n == 3:
+        return [0, 2, 3]
+    groups = [2] * (n // 2)
+    if n % 2:
+        groups[-1] = 3
+    starts = [sum(groups[:i]) for i in range(len(groups))]
+    levels = [3] * n
+    for s in starts[1:]:
+        levels[s] = 2
+    if len(starts) > 1:
+        levels[min(starts[1:], key=lambda s: (abs(s - n / 2), s))] = 1
+    levels[0] = 0
+    return levels
+
+
+def accents(pattern: list) -> list[float]:
+    """The metric accent in dB for each Event of expand(pattern): the sum, down the nesting, of
+    each enclosing slot's ACCENT_DB level, halved per level of depth."""
+    out: list[float] = []
+
+    def walk(node, db: float, depth: int) -> None:
+        if isinstance(node, list):
+            for child, level in zip(node, _levels(len(node))):
+                walk(child, db + ACCENT_DB[level] * 0.5 ** depth, depth + 1)
+        elif node is not _:
+            out.append(db)
+        elif not out:
+            out.append(0.0)  # a leading hold continues the previous cycle
+
+    walk(pattern, 0.0, 0)
+    return out
 
 
 def tile(pattern: list, span: Fraction, total: Fraction) -> list[Event]:

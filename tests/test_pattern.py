@@ -2,7 +2,7 @@ import copy
 import unittest
 from fractions import Fraction as Fr
 
-from utils.pattern import Event, _, event_paths, expand, tile
+from utils.pattern import Event, _, _levels, accents, event_paths, expand, tile
 
 
 def shape(events):
@@ -41,6 +41,19 @@ class ExpandTest(unittest.TestCase):
         pattern = [_, 1, [2, _, "3+"], 0, _]
         self.assertEqual(event_paths(pattern), [None, (1,), (2, 0), (2, 2), (3,)])
         self.assertEqual(len(event_paths(pattern)), len(expand(pattern, 5)))
+
+    def test_metric_levels(self):
+        self.assertEqual(_levels(4), [0, 3, 1, 3])  # beat 1, then beat 3, then the off-beats
+        self.assertEqual(_levels(3), [0, 2, 3])  # middle a touch stronger than the last
+        self.assertEqual(_levels(7)[0], 0)
+        self.assertEqual(_levels(7).index(1), 4)  # the group start nearest the middle
+
+    def test_accents_follow_the_nesting(self):
+        a = accents([1, [2, 3], 4, [5, 6, 7]])
+        self.assertEqual(len(a), 7)
+        self.assertEqual(max(a), a[0])  # the downbeat is strongest
+        self.assertGreater(a[3], a[2])  # beat 3 of 4 beats an off-beat sub-note
+        self.assertEqual(accents([_, 1])[0], 0.0)  # a leading hold isn't accented
 
     def test_hold_survives_copying(self):
         self.assertIs(copy.deepcopy([_])[0], _)

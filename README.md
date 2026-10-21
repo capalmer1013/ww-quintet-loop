@@ -29,6 +29,7 @@ Run `make` to list the targets, and `make run ARGS="--help"` for every flag.
 | `--tempo` | `0` | Beats per minute; `0` = a whole-number tempo from 50 to 70, random per seed |
 | `--reverb` | `0.3` | Hall reverb amount (`0` = dry) |
 | `--room` | `0.8` | Hall size, 0–1 (`0.8` ≈ 2.6 s decay) |
+| `--master` / `--no-master` | on | Phone-friendly EQ, compression and −16 LUFS loudness (see Mastering) |
 | `--max-seconds` | `360` | Longest allowed piece (one full phase cycle) |
 | `--output-dir` | `out` | Where files are written |
 | `--stems` | off | Also write `piece_<seed>_<instrument>.wav` (mono) for each voice |
@@ -73,21 +74,55 @@ render('piece_2000', C.lydian,
   - A note without that recording falls back to the nearest softer one.
 - **Volume sine:** `lfo=k` makes the voice's volume ebb and flow on a slow sine, `k` cycles over the
   whole piece, starting at `lfo_phase` (0 = loudest).
-  - The dip is 6 dB.
+  - It swings 12 dB, from −4 dB at its loudest down to −16 dB, so a voice at its quietest is a
+    quarter as loud as at its peak, and the peaks don't get too loud.
   - Generated voices get periods of about 10–30 s, chosen not to line up with the voice's own
     cycle, so each repeat of a pattern sounds a little different.
   - It's whole cycles over the piece, so loops stay seamless.
   - `lfo=0` keeps the volume steady.
 - **Piece length:** the lowest common multiple of the five cycle lengths, so every voice realigns
   exactly at the end.
+- **Metric accents:** stronger beats are slightly louder. The first note of any group is strongest
+  (the loop's downbeat most of all, about +1.75 dB). In a longer group, the group start nearest the
+  middle is next, like beat 3 of 4; then other group starts; then off-beats. Each level of nesting
+  counts half as much.
 - **Sounding:** voices are monophonic, so every note lasts until the next event starts.
   - A sample longer than the note is cut, with a fade of 10% of the note (10–150 ms).
-  - A note longer than its sample is sustained: the sample's attack plays first, then its steady
-    middle repeats with 100 ms crossfades, and its natural release ends the note.
+  - A note longer than its sample uses the recording that is actually longest (measured from the
+    file; the lengths in the file names are only nominal).
+  - If it's still too short, the sample's steady middle repeats with 100 ms crossfades and its
+    natural release ends the note. This only happens if that middle is at least 0.8 s long and
+    needs at most 3 repeats. Otherwise the sample plays once and the rest of the note is silent,
+    rather than stuttering.
+  - Generation avoids those gaps: a note held longer than its instrument can sustain on that pitch
+    is re-articulated (the hold becomes a repeated note on the same pitch).
   - **Long notes** (1.5 s or more) swell `<>`: they rise from about −30 dB to full level 40% of
     the way through the note, then die away.
   - **Shorter notes** fade in over 0.15 of a beat (150 ms at 60 bpm), so slower tempos get softer
     attacks.
+
+## Mix
+
+Each voice sits at a fixed spot in a mild stereo seating (`PAN` in `utils/render.py`, −1 left to
++1 right):
+
+| flute | clarinet | bassoon | horn | oboe |
+|---|---|---|---|---|
+| −0.35 | −0.2 | −0.05 | +0.1 | +0.35 |
+
+The two highest voices are spread apart, and the horn and bassoon sit near the middle.
+
+## Mastering
+
+On by default (`--no-master` turns it off), in `utils/master.py`:
+
+- **EQ** on every recording: a steep cut below 60 Hz, about −3 dB around 250–330 Hz (boxiness), and
+  about +3.5 to +4 dB at 3–4.5 kHz, where phone speakers and ears are most sensitive.
+- **Compression:** gentle (2:1), from 8 dB below the target loudness, so quiet passages survive
+  small speakers.
+- **Loudness:** every piece is normalised to about −16 LUFS (the usual level for phones and
+  streaming), with a −1 dBFS peak limiter.
+- **Seamless loops:** everything wraps at the loop point.
 
 ## Reverb
 
@@ -210,9 +245,9 @@ The constants are at the top of `utils/voice.py`.
   note), skip (two palette notes) or leap.
 - **Quick figures:** an occasional subdivision in the instrument's own style.
 - **Breathing:** rests and holds.
-- **Loop length:** every voice's loop lasts 10–16 s at the piece's tempo, strung from several
-  phrase cells (each about the instrument's own cell length) so the lines are long and don't
-  repeat too often.
+- **Loop length:** every voice's loop lasts 6–10 s at the piece's tempo, strung from phrase cells
+  (each about the instrument's own cell length). That's long enough not to feel repetitive, short
+  enough to hear each loop come round.
 
 | | Moves | Quick figures | Character |
 |---|---|---|---|
@@ -224,16 +259,17 @@ The constants are at the top of `utils/voice.py`.
 
 On top of that:
 
-- 1–2 voices per piece sustain 3–5 long notes (2 beats or more each) across their loop. They're
-  chosen weighted towards horn and clarinet.
-- Up to two voices drift, but only where the loop still lasts at least 10 s.
+- 1–2 voices per piece sustain 1–3 long notes (3 beats or more each) across their loop. They're
+  chosen weighted towards the instruments whose recordings can hold long notes: clarinet, horn and
+  flute, rarely the oboe or bassoon.
+- Up to two voices drift, but only where the loop still lasts at least 6 s.
 - Each voice's dynamic runs from `p` up to its instrument's cap: `p`–`mf` for the woodwinds and
   bassoon, and `p`–`mp` for the horn.
 - Each voice gets a volume sine with its own period and starting point.
 
 It redraws, deterministically for that seed, until the piece fits `--max-seconds` and has at least
-3 different loop lengths, so the voices genuinely phase. Long, nearby loop lengths (say 12 against
-15 s) slide past each other slowly, Reich-style. Pieces run about 1–6 minutes (median about 3.7).
+3 different loop lengths, so the voices genuinely phase. Nearby loop lengths (say 7 against 8 s)
+slide past each other slowly, Reich-style. Pieces run about 1–6 minutes (median about 4).
 
 ## Theory helpers
 
