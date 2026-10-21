@@ -1,5 +1,9 @@
 """Generate phasing woodwind quintet pieces, one per seed. Run with --help for options."""
-from utils import Config, generate, piece_beats, piece_code, render, resolve_notes, seconds
+
+from .config import Config
+from .render import piece_code, render, seconds
+from .theory import resolve_notes
+from .voice import generate, piece_beats
 
 
 def main() -> None:

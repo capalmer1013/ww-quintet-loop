@@ -1,9 +1,25 @@
 import unittest
 from fractions import Fraction as Fr
 
-from utils import (QUINTET, Config, C, Fs, B, _, expand, generate, instrument, midi_to_note, palette, parallels,
-                   piece_beats, resolve_notes, resolve_pitch, voice)
-from utils.voice import LFO_DEPTH_DB, LFO_PEAK_DB, LOW_TO_HIGH
+from quintet import (
+    QUINTET,
+    B,
+    C,
+    Config,
+    Fs,
+    _,
+    expand,
+    generate,
+    instrument,
+    midi_to_note,
+    palette,
+    parallels,
+    piece_beats,
+    resolve_notes,
+    resolve_pitch,
+    voice,
+)
+from quintet.voice import LFO_DEPTH_DB, LFO_PEAK_DB, LOW_TO_HIGH
 
 Config(argv=[], tempo=60)
 
@@ -30,7 +46,8 @@ class VoiceTest(unittest.TestCase):
             voice([1, 0.5], beats=2)
 
     def test_code_round_trips(self):
-        from utils import _  # noqa: F401  (used by eval)
+        from quintet import _  # noqa: F401  (used by eval)
+
         v = voice([1, [2, 3], _, 0], beats=5, drift=8, dynamic="mp", lfo=3, lfo_phase=0.25)
         self.assertEqual(v.code(), "voice([1, [2, 3], _, 0], beats=5, drift=8, dynamic='mp', lfo=3, lfo_phase=0.25)")
         self.assertEqual(eval(v.code()), v)
@@ -123,7 +140,7 @@ class PaletteTest(unittest.TestCase):
 class VoicingTest(unittest.TestCase):
     def test_colour_notes_stay_up_top(self):
         for notes in (C.maj9, Fs.maj7s11, B.lydian, C.sus9):
-            pcs = lambda name: {m % 12 for m in palette(notes, instrument(name))}  # noqa: E731
+            pcs = lambda name, notes=notes: {m % 12 for m in palette(notes, instrument(name))}
             self.assertLessEqual(pcs("bassoon"), set(notes.bass), notes)
             self.assertLessEqual(pcs("horn"), set(notes.core), notes)
         upper = {m % 12 for n in ("clarinet", "oboe", "flute") for m in palette(C.maj9, instrument(n))}
@@ -132,7 +149,8 @@ class VoicingTest(unittest.TestCase):
 
 class EveryChordRendersTest(unittest.TestCase):
     def test_every_palette_note_has_a_soft_sample(self):
-        from utils.theory import QUALITIES, PitchClass
+        from quintet.theory import QUALITIES, PitchClass
+
         for quality in QUALITIES:
             for root in range(12):
                 notes = getattr(PitchClass(root), quality)
@@ -193,7 +211,8 @@ class ParallelsTest(unittest.TestCase):
 
 class RearticulationTest(unittest.TestCase):
     def test_no_note_outlasts_what_its_instrument_can_sustain(self):
-        from utils.render import sustainable_frames
+        from quintet import sustainable_frames
+
         for s in range(20):
             notes = resolve_notes("random", s)
             v = generate(s, notes)

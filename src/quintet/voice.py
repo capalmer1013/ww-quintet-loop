@@ -1,21 +1,21 @@
 """Voices: a pattern cycling over its own span, with a palette spaced by the harmonic series."""
+
 from __future__ import annotations
 
 import copy
 import math
 import random
 from dataclasses import dataclass, replace
-from itertools import combinations
 from fractions import Fraction
 from functools import reduce
+from itertools import combinations
 
 from .config import Config
-from .pattern import _, _CONTINUE, STEP, event_paths, expand, leaves
-from .samples import DYNAMICS, QUINTET, SAMPLE_RATE, Instrument, instrument, midi_to_note
+from .pattern import _CONTINUE, STEP, _, event_paths, expand, leaves
+from .samples import DYNAMICS, QUINTET, SAMPLE_RATE, Instrument, instrument, midi_to_note, sustainable_frames
 from .theory import PitchSet
 
-__all__ = ["Voice", "voice", "piece_beats", "palette", "generate", "Profile", "PROFILES", "resolve_pitch",
-           "parallels"]
+__all__ = ["Voice", "voice", "piece_beats", "palette", "generate", "Profile", "PROFILES", "resolve_pitch", "parallels"]
 
 # --- spacing: each voice is centred on a partial of a low fundamental on the set's root, and owns
 # the band halfway to its neighbours' centres, so bands are wide at the bottom and narrow on top ---
@@ -24,6 +24,7 @@ LOW_TO_HIGH = ("bassoon", "horn", "clarinet", "oboe", "flute")
 PARTIALS = (2, 3, 4, 6, 8)  # per LOW_TO_HIGH; for C: C3 G3 C4 G4 C5
 OUTER_REACH = 12  # semitones below the lowest centre / above the highest
 MIN_PALETTE = 3  # widen a band a semitone each side until it has this many notes
+
 
 # --- generation ---
 @dataclass(frozen=True)
@@ -47,16 +48,79 @@ class Profile:
 
 
 PROFILES = {
-    "flute": Profile((10, 50, 25, 15), 0.20, "run", (3, 4), 0.05, 0.10, (3, 6), (2, 8), 2.5,
-                     passing=0.5, neighbour=0.25, suspension=0.15),
-    "oboe": Profile((15, 60, 20, 5), 0.10, "pair", (2, 2), 0.20, 0.20, (2, 5), (3, 8), 0.5,
-                    passing=0.45, neighbour=0.2, suspension=0.35),
-    "clarinet": Profile((10, 25, 45, 20), 0.15, "arpeggio", (2, 4), 0.10, 0.15, (2, 6), (2, 8), 3,
-                        passing=0.45, neighbour=0.15, suspension=0.3),
-    "horn": Profile((50, 15, 30, 5), 0.12, "repeat", (2, 3), 0.10, 0.25, (2, 5), (3, 8), 3,
-                    anchors=(0, 7), passing=0.1, neighbour=0.05, suspension=0.45),
-    "bassoon": Profile((25, 25, 15, 35), 0.12, "bounce", (2, 2), 0.15, 0.10, (2, 6), (2, 8), 1,
-                       anchors=(0,), octave=3.0, passing=0.3, neighbour=0.08, suspension=0.1),
+    "flute": Profile(
+        (10, 50, 25, 15),
+        0.20,
+        "run",
+        (3, 4),
+        0.05,
+        0.10,
+        (3, 6),
+        (2, 8),
+        2.5,
+        passing=0.5,
+        neighbour=0.25,
+        suspension=0.15,
+    ),
+    "oboe": Profile(
+        (15, 60, 20, 5),
+        0.10,
+        "pair",
+        (2, 2),
+        0.20,
+        0.20,
+        (2, 5),
+        (3, 8),
+        0.5,
+        passing=0.45,
+        neighbour=0.2,
+        suspension=0.35,
+    ),
+    "clarinet": Profile(
+        (10, 25, 45, 20),
+        0.15,
+        "arpeggio",
+        (2, 4),
+        0.10,
+        0.15,
+        (2, 6),
+        (2, 8),
+        3,
+        passing=0.45,
+        neighbour=0.15,
+        suspension=0.3,
+    ),
+    "horn": Profile(
+        (50, 15, 30, 5),
+        0.12,
+        "repeat",
+        (2, 3),
+        0.10,
+        0.25,
+        (2, 5),
+        (3, 8),
+        3,
+        anchors=(0, 7),
+        passing=0.1,
+        neighbour=0.05,
+        suspension=0.45,
+    ),
+    "bassoon": Profile(
+        (25, 25, 15, 35),
+        0.12,
+        "bounce",
+        (2, 2),
+        0.15,
+        0.10,
+        (2, 6),
+        (2, 8),
+        1,
+        anchors=(0,),
+        octave=3.0,
+        passing=0.3,
+        neighbour=0.08,
+        suspension=0.1,
+    ),
 }
 REPAIR_STEPS = 60  # nudges allowed to clear a candidate of parallel 5ths/octaves
 CYCLE_SECONDS = (6, 10)  # each voice's loop, at the piece's tempo (rounded to whole beats)
@@ -124,8 +188,7 @@ class Voice:
         return f"voice({', '.join(args)})"
 
 
-def voice(pattern: list, beats: int, drift: int = 0, dynamic: str = "p", lfo: int = 0,
-          lfo_phase: float = 0.0) -> Voice:
+def voice(pattern: list, beats: int, drift: int = 0, dynamic: str = "p", lfo: int = 0, lfo_phase: float = 0.0) -> Voice:
     """A pattern repeating every `beats` beats (shortened by `drift`, see Voice.span), its volume
     on a slow sine with `lfo` cycles over the piece."""
     return Voice(pattern, beats, drift, dynamic, lfo, lfo_phase)
@@ -227,7 +290,7 @@ class _Walk:
         return resolve_pitch(index, self.tones, self.notes, self.playable)
 
     def non_chord_step(self, k: int, sign: str) -> str | None:
-        """"k+"/"k-" if that scale step is a playable non-chord tone, else None."""
+        """ "k+"/"k-" if that scale step is a playable non-chord tone, else None."""
         step = f"{k}{sign}"
         m = self.pitch(step)
         return step if m != self.pitch(k) and m % 12 not in self.notes.pitch_classes else None
@@ -296,8 +359,12 @@ def _onsets(v: Voice, pitch, total: Fraction) -> dict[Fraction, tuple[int | None
     """{beat: (previous pitch, new pitch, event ordinal in the cycle)} for every event that starts a
     note or rest over the looping piece (pitch None = rest)."""
     one = expand(v.pattern, v.span)
-    events = [(c * v.span + e.start, None if e.index is None else pitch(e.index), k)
-              for c in range(int(total / v.span)) for k, e in enumerate(one) if e.index != _CONTINUE]
+    events = [
+        (c * v.span + e.start, None if e.index is None else pitch(e.index), k)
+        for c in range(int(total / v.span))
+        for k, e in enumerate(one)
+        if e.index != _CONTINUE
+    ]
     return {t: (events[i - 1][1], p, k) for i, (t, p, k) in enumerate(events)}  # i-1 wraps: it loops
 
 
@@ -330,8 +397,9 @@ def _leaf(pattern: list, path: tuple[int, ...]):
     return pattern
 
 
-def _repair(rng: random.Random, voices: dict[str, Voice], notes: PitchSet, sizes: dict[str, int],
-            config: Config) -> dict[str, Voice] | None:
+def _repair(
+    rng: random.Random, voices: dict[str, Voice], notes: PitchSet, sizes: dict[str, int], config: Config
+) -> dict[str, Voice] | None:
     """Nudge notes to neighbouring palette notes until no parallel 5ths/octaves remain (None if
     REPAIR_STEPS isn't enough)."""
     voices = {n: replace(v, pattern=copy.deepcopy(v.pattern)) for n, v in voices.items()}
@@ -369,7 +437,6 @@ def _repair(rng: random.Random, voices: dict[str, Voice], notes: PitchSet, sizes
 
 def _max_beats(inst: Instrument, midi: int, dynamic: str, beat_seconds: Fraction) -> Fraction:
     """The longest this pitch can be held without the sample stuttering or running out."""
-    from .render import sustainable_frames  # (render imports this module)
     sample = inst.note(midi_to_note(midi), dynamic, 1e9, max_dynamic=inst.max_layer)  # the longest
     return Fraction(sustainable_frames(round(sample.seconds * SAMPLE_RATE)), SAMPLE_RATE) / beat_seconds
 
@@ -459,14 +526,15 @@ def generate(seed: int, notes: PitchSet, config: Config | None = None) -> dict[s
             walk = _Walk(rng, palettes[name], notes, PROFILES[name], instrument(name, config).playable)
             pattern = (_sustain_pattern if name in sustainers else _pattern)(walk, beats)
             top = DYNAMICS.index(instrument(name, config).max_layer)
-            voices[name] = Voice(pattern, beats, drift, rng.choice(DYNAMICS[DYNAMICS.index(GEN_SOFTEST):top + 1]))
+            voices[name] = Voice(pattern, beats, drift, rng.choice(DYNAMICS[DYNAMICS.index(GEN_SOFTEST) : top + 1]))
         voices = _repair(rng, voices, notes, {n: len(t) for n, t in palettes.items()}, config)
         if voices is None:
             continue
         voices = {n: _rearticulate(v, instrument(n, config), notes, beat_seconds) for n, v in voices.items()}
         return {
-            name: replace(v, lfo=_lfo(rng, int(total / v.span), float(total * beat_seconds)),
-                          lfo_phase=round(rng.random(), 2) % 1)
+            name: replace(
+                v, lfo=_lfo(rng, int(total / v.span), float(total * beat_seconds)), lfo_phase=round(rng.random(), 2) % 1
+            )
             for name, v in voices.items()
         }
     raise ValueError(f"seed {seed}: no piece fits in {config.max_seconds}s; raise --max-seconds")

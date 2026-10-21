@@ -1,11 +1,13 @@
 """The sample library: one Instrument per quintet member, indexing its WAV files."""
+
 from __future__ import annotations
 
-import wave
-from array import array
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
+
+import numpy as np
+from pedalboard.io import AudioFile
 
 from .config import Config
 
@@ -18,6 +20,37 @@ MAX_LAYERS = {"flute": "mf", "oboe": "mf", "clarinet": "mf", "bassoon": "mf", "h
 NOTE_NAMES = ["C", "Cs", "D", "Ds", "E", "F", "Fs", "G", "Gs", "A", "As", "B"]
 # Nominal seconds for each recorded length; used to pick a sample for a duration.
 LENGTH_SECONDS = {"0.25s": 0.25, "0.5s": 0.5, "1s": 1.0, "1.5s": 1.5, "long": 3.0, "very-long": 15.0, "phrase": 0.0}
+
+# sustaining a note longer than its recording: keep the attack, loop the steady middle with
+# crossfades, end on the recording's own release; only when the loop is long enough not to stutter
+ATTACK_SECONDS = 0.3  # (or the first quarter of the recording) kept as-is at the start
+RELEASE_SECONDS = 0.6  # (or the last 35%) played at the end as the note's natural release
+CROSSFADE_SECONDS = 0.1  # equal-power crossfade at each loop seam
+MIN_LOOP_SECONDS = 0.8
+MAX_LOOP_REPEATS = 3
+
+
+def loop_bounds(length: int) -> tuple[int, int]:
+    """(attack end, release start) of a recording `length` frames long: the middle a sustain loops."""
+    attack = min(length // 4, round(ATTACK_SECONDS * SAMPLE_RATE))
+    return attack, length - min(round(length * 0.35), round(RELEASE_SECONDS * SAMPLE_RATE))
+
+
+def sustainable_frames(length: int) -> int:
+    """The longest note a recording of `length` frames can play without stuttering: itself, plus
+    MAX_LOOP_REPEATS of its steady middle if that is long enough to loop."""
+    attack, release_at = loop_bounds(length)
+    loop = release_at - attack
+    if loop < MIN_LOOP_SECONDS * SAMPLE_RATE:
+        return length
+    step = loop - min(round(CROSSFADE_SECONDS * SAMPLE_RATE), loop // 3)  # each repeat adds this much
+    return length + MAX_LOOP_REPEATS * step
+
+
+def loopable(length: int, n: int) -> bool:
+    """Whether a recording of `length` frames can stretch to n frames by looping."""
+    most = sustainable_frames(length)
+    return most > length and n <= most
 
 
 def note_to_midi(note: str) -> int:
@@ -48,9 +81,9 @@ class Sample:
         """Actual duration, read from the file header (the length in the name is only nominal)."""
         return _frames(self.path) / SAMPLE_RATE
 
-    def load(self) -> array:
-        """16-bit mono frames as array('h'). Cached; do not modify the result in place."""
-        return _read_wav(self.path)
+    def load(self) -> np.ndarray:
+        """Mono float32 audio in [-1, 1]. Cached and read-only."""
+        return _read(self.path)
 
     @classmethod
     def from_path(cls, path: Path) -> Sample:
@@ -71,6 +104,8 @@ class Instrument:
         self.config = config or Config.current()
         self.name = name
         self.root = self.config.sample_root / name
+        if not self.config.sample_root.is_dir():
+            raise FileNotFoundError(f"no sample library at {self.config.sample_root}; point --sample-root at it")
         if not self.root.is_dir():
             available = sorted(p.name for p in self.config.sample_root.iterdir() if p.is_dir())
             raise FileNotFoundError(f"no instrument {name!r} in {self.config.sample_root}; available: {available}")
@@ -79,7 +114,7 @@ class Instrument:
         self.extended = [s for s in self.samples if s.technique is not None]
         self.pitches = frozenset(s.midi for s in self.notes)  # MIDI numbers with plain-note samples
         self.max_layer = MAX_LAYERS.get(name, "ff")
-        soft = DYNAMICS[:DYNAMICS.index(self.max_layer) + 1]
+        soft = DYNAMICS[: DYNAMICS.index(self.max_layer) + 1]
         self.playable = frozenset(s.midi for s in self.notes if s.dynamic in soft)  # ... at or below max_layer
 
     def __repr__(self) -> str:
@@ -98,12 +133,18 @@ class Instrument:
     def range(self) -> tuple[str, str]:
         return midi_to_note(min(self.pitches)), midi_to_note(max(self.pitches))
 
-    def find(self, note: str | None = None, dynamic: str | None = None,
-             length: str | None = None, technique: str | None = None) -> list[Sample]:
+    def find(
+        self,
+        note: str | None = None,
+        dynamic: str | None = None,
+        length: str | None = None,
+        technique: str | None = None,
+    ) -> list[Sample]:
         """Plain-note samples by default; pass technique= to search extended samples."""
         pool = self.extended if technique else self.notes
         return [
-            s for s in pool
+            s
+            for s in pool
             if (note is None or s.note == note)
             and (dynamic is None or s.dynamic == dynamic)
             and (length is None or s.length == length)
@@ -121,7 +162,7 @@ class Instrument:
           recording, preferring nearer dynamics, so long notes need as little sustaining as possible.
         """
         target = min(DYNAMICS.index(dynamic), DYNAMICS.index(max_dynamic))
-        allowed = DYNAMICS[:DYNAMICS.index(max_dynamic) + 1]
+        allowed = DYNAMICS[: DYNAMICS.index(max_dynamic) + 1]
         nearest = sorted(allowed, key=lambda d: (abs(DYNAMICS.index(d) - target), -DYNAMICS.index(d)))
         by_dynamic = [(d, self.find(note, d)) for d in nearest]
         by_dynamic = [(d, matches) for d, matches in by_dynamic if matches]
@@ -152,16 +193,17 @@ def instrument(name: str, config: Config | None = None) -> Instrument:
     return _instruments[key]
 
 
-@lru_cache(maxsize=None)
+@cache
 def _frames(path: Path) -> int:
-    with wave.open(str(path)) as w:
-        return w.getnframes()
+    with AudioFile(str(path)) as f:
+        return f.frames
 
 
-@lru_cache(maxsize=None)
-def _read_wav(path: Path) -> array:
-    with wave.open(str(path)) as w:
-        if (w.getframerate(), w.getsampwidth(), w.getnchannels()) != (SAMPLE_RATE, 2, 1):
-            raise ValueError(f"{path}: expected {SAMPLE_RATE} Hz 16-bit mono")
-        frames = array("h", w.readframes(w.getnframes()))
-    return frames
+@cache
+def _read(path: Path) -> np.ndarray:
+    with AudioFile(str(path)) as f:
+        if (f.samplerate, f.num_channels) != (SAMPLE_RATE, 1):
+            raise ValueError(f"{path}: expected {SAMPLE_RATE} Hz mono")
+        audio = f.read(f.frames)[0]
+    audio.flags.writeable = False
+    return audio

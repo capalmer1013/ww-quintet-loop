@@ -1,0 +1,77 @@
+"""Woodwind quintet phasing pieces: `from quintet import *` gives everything a piece file needs."""
+
+from .config import Config
+from .effects import finish, loudness_lufs, master, reverb
+from .pattern import Event, _, accents, expand, tile
+from .render import (
+    hairpin,
+    leveled,
+    lfo_curve,
+    loudness_db,
+    mix,
+    piece_code,
+    render,
+    seconds,
+    sustain,
+    voice_line,
+    write_wav,
+)
+from .samples import (
+    DYNAMICS,
+    QUINTET,
+    SAMPLE_RATE,
+    Instrument,
+    Sample,
+    instrument,
+    loopable,
+    midi_to_note,
+    note_to_midi,
+    sustainable_frames,
+)
+from .theory import *  # noqa: F403  (pitch classes C..B, intervals, PitchSet, fifths, fourths, parse_set, ...)
+from .theory import __all__ as _theory_all
+from .voice import PROFILES, Profile, Voice, generate, palette, parallels, piece_beats, resolve_pitch, voice
+
+__all__ = [
+    "Config",
+    "finish",
+    "loudness_lufs",
+    "master",
+    "reverb",
+    "Event",
+    "_",
+    "accents",
+    "expand",
+    "tile",
+    "hairpin",
+    "leveled",
+    "lfo_curve",
+    "loudness_db",
+    "mix",
+    "piece_code",
+    "render",
+    "seconds",
+    "sustain",
+    "voice_line",
+    "write_wav",
+    "DYNAMICS",
+    "QUINTET",
+    "SAMPLE_RATE",
+    "Instrument",
+    "Sample",
+    "instrument",
+    "loopable",
+    "midi_to_note",
+    "note_to_midi",
+    "sustainable_frames",
+    "PROFILES",
+    "Profile",
+    "Voice",
+    "generate",
+    "palette",
+    "parallels",
+    "piece_beats",
+    "resolve_pitch",
+    "voice",
+    *_theory_all,
+]

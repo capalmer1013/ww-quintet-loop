@@ -1,5 +1,6 @@
 """Nested-list patterns: lists divide their span equally; ints index a palette, "3+"/"3-" step off a
 palette note by one scale step, 0 rests, _ holds."""
+
 from __future__ import annotations
 
 import re
@@ -69,7 +70,7 @@ def _walk(node, start: Fraction, span: Fraction, path: str, leaves: list) -> Non
     elif node is _ or (type(node) is int and node >= 0) or (type(node) is str and STEP.fullmatch(node)):
         leaves.append((start, span, node))
     else:
-        raise ValueError(f"{path}: {node!r} is not a pattern element (int >= 0, \"3+\"/\"3-\", _, or list)")
+        raise ValueError(f'{path}: {node!r} is not a pattern element (int >= 0, "3+"/"3-", _, or list)')
 
 
 def event_paths(pattern: list) -> list[tuple[int, ...] | None]:
@@ -134,7 +135,7 @@ def accents(pattern: list) -> list[float]:
     def walk(node, db: float, depth: int) -> None:
         if isinstance(node, list):
             for child, level in zip(node, _levels(len(node))):
-                walk(child, db + ACCENT_DB[level] * 0.5 ** depth, depth + 1)
+                walk(child, db + ACCENT_DB[level] * 0.5**depth, depth + 1)
         elif node is not _:
             out.append(db)
         elif not out:

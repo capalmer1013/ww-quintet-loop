@@ -2,7 +2,7 @@ import copy
 import unittest
 from fractions import Fraction as Fr
 
-from utils.pattern import Event, _, _levels, accents, event_paths, expand, tile
+from quintet.pattern import Event, _, _levels, accents, event_paths, expand, tile
 
 
 def shape(events):
@@ -15,10 +15,17 @@ class ExpandTest(unittest.TestCase):
 
     def test_nested_and_triplet(self):
         events = expand([1, [2, 3], [4, 5, 6]], 3)
-        self.assertEqual(shape(events), [
-            (0, 1, 1), (1, Fr(1, 2), 2), (Fr(3, 2), Fr(1, 2), 3),
-            (2, Fr(1, 3), 4), (Fr(7, 3), Fr(1, 3), 5), (Fr(8, 3), Fr(1, 3), 6),
-        ])
+        self.assertEqual(
+            shape(events),
+            [
+                (0, 1, 1),
+                (1, Fr(1, 2), 2),
+                (Fr(3, 2), Fr(1, 2), 3),
+                (2, Fr(1, 3), 4),
+                (Fr(7, 3), Fr(1, 3), 5),
+                (Fr(8, 3), Fr(1, 3), 6),
+            ],
+        )
 
     def test_holds_and_rests(self):
         self.assertEqual(shape(expand([1, _, 0, _], 4)), [(0, 2, 1), (2, 2, None)])
@@ -31,8 +38,11 @@ class ExpandTest(unittest.TestCase):
         self.assertEqual(events[-1].start + events[-1].beats, Fr(7, 3))
 
     def test_scale_steps(self):
-        self.assertEqual(shape(expand([1, "3+", ["2-", 2]], 2)),
-                         [(0, Fr(2, 3), 1), (Fr(2, 3), Fr(2, 3), "3+"), (Fr(4, 3), Fr(1, 3), "2-"), (Fr(5, 3), Fr(1, 3), 2)])
+        third, sixth = Fr(2, 3), Fr(1, 3)
+        self.assertEqual(
+            shape(expand([1, "3+", ["2-", 2]], 2)),
+            [(0, third, 1), (third, third, "3+"), (2 * third, sixth, "2-"), (Fr(5, 3), sixth, 2)],
+        )
         for bad in ("0+", "3*", "+3", "3"):
             with self.assertRaises(ValueError):
                 expand([bad], 1)
@@ -59,8 +69,14 @@ class ExpandTest(unittest.TestCase):
         self.assertIs(copy.deepcopy([_])[0], _)
 
     def test_invalid_elements_report_path(self):
-        for bad, path in (([1, 1.5], "pattern[1]"), ([1, [2, (3,)]], "pattern[1][1]"), ([True], "pattern[0]"),
-                          ([1, []], "pattern[1]"), ([-1], "pattern[0]"), (["A4"], "pattern[0]")):
+        for bad, path in (
+            ([1, 1.5], "pattern[1]"),
+            ([1, [2, (3,)]], "pattern[1][1]"),
+            ([True], "pattern[0]"),
+            ([1, []], "pattern[1]"),
+            ([-1], "pattern[0]"),
+            (["A4"], "pattern[0]"),
+        ):
             with self.assertRaises(ValueError) as cm:
                 expand(bad, 1)
             self.assertTrue(str(cm.exception).startswith(path + ":"), cm.exception)

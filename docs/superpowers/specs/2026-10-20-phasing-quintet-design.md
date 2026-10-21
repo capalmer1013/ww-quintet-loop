@@ -325,6 +325,8 @@ volume. They are removed entirely: `Voice.swell` and `Voice.phase`, the block ga
 
 ## 15. Reverb (added 2026-10-20)
 
+*Superseded by pedalboard's reverb; see `2026-10-20-proper-project-design.md`.*
+
 Post-processing to sound less MIDI-like, still standard library only (`utils/reverb.py`).
 
 - **Signal path:** a Freeverb-style reverb with mono in and stereo out.
@@ -527,3 +529,14 @@ The sine's loudest point was too loud. `LFO_PEAK_DB` = −4 lowers the whole cur
   - **Stems** are not mastered.
 - **Measured on `piece_9000`:** −35.7 → −14.9 LUFS, peak −16.8 → −1.0 dBFS, loud-to-quiet spread
   7.1 → 3.8 dB.
+
+## 27. Moved to a proper project (2026-10-20)
+
+The standard-library constraint is dropped. See `2026-10-20-proper-project-design.md`:
+
+- a `src/quintet/` package managed by uv, with the `quintet` command;
+- numpy rendering;
+- pedalboard reverb, EQ, compression and limiting, with true LUFS from pyloudnorm.
+
+The stdlib reverb (section 15) and mastering (section 26) are replaced. Generation is unchanged:
+`tests/test_generation_parity.py` checks that 20 seeds generate the same pieces as before the move.

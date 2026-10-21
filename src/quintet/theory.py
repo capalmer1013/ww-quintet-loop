@@ -1,13 +1,47 @@
 """Pitch classes, chord and scale sets, intervals and the circle of fifths."""
+
 from __future__ import annotations
 
 import random
 from dataclasses import dataclass
 
 __all__ = [
-    "PitchClass", "PitchSet", "QUALITIES", "HARMONY_WEIGHTS", "fifths", "fourths", "parse_set", "resolve_notes",
-    "C", "Cs", "Db", "D", "Ds", "Eb", "E", "F", "Fs", "Gb", "G", "Gs", "Ab", "A", "As", "Bb", "B",
-    "m2", "M2", "m3", "M3", "P4", "TT", "P5", "m6", "M6", "m7", "M7",
+    "PitchClass",
+    "PitchSet",
+    "QUALITIES",
+    "HARMONY_WEIGHTS",
+    "fifths",
+    "fourths",
+    "parse_set",
+    "resolve_notes",
+    "C",
+    "Cs",
+    "Db",
+    "D",
+    "Ds",
+    "Eb",
+    "E",
+    "F",
+    "Fs",
+    "Gb",
+    "G",
+    "Gs",
+    "Ab",
+    "A",
+    "As",
+    "Bb",
+    "B",
+    "m2",
+    "M2",
+    "m3",
+    "M3",
+    "P4",
+    "TT",
+    "P5",
+    "m6",
+    "M6",
+    "m7",
+    "M7",
 ]
 
 NAMES = ["C", "Cs", "D", "Ds", "E", "F", "Fs", "G", "Gs", "A", "As", "B"]
@@ -15,46 +49,105 @@ NAMES = ["C", "Cs", "D", "Ds", "E", "F", "Fs", "G", "Gs", "A", "As", "B"]
 # Semitones above the root.
 QUALITIES = {
     # chords
-    "maj": (0, 4, 7), "min": (0, 3, 7), "dim": (0, 3, 6), "aug": (0, 4, 8),
-    "sus2": (0, 2, 7), "sus4": (0, 5, 7),
-    "dom7": (0, 4, 7, 10), "maj7": (0, 4, 7, 11), "min7": (0, 3, 7, 10),
-    "dim7": (0, 3, 6, 9), "m7b5": (0, 3, 6, 10), "maj7s11": (0, 4, 6, 7, 11),
+    "maj": (0, 4, 7),
+    "min": (0, 3, 7),
+    "dim": (0, 3, 6),
+    "aug": (0, 4, 8),
+    "sus2": (0, 2, 7),
+    "sus4": (0, 5, 7),
+    "dom7": (0, 4, 7, 10),
+    "maj7": (0, 4, 7, 11),
+    "min7": (0, 3, 7, 10),
+    "dim7": (0, 3, 6, 9),
+    "m7b5": (0, 3, 6, 10),
+    "maj7s11": (0, 4, 6, 7, 11),
     # extended chords
-    "maj9": (0, 2, 4, 7, 11), "maj69": (0, 2, 4, 7, 9), "min9": (0, 2, 3, 7, 10),
-    "min11": (0, 3, 5, 7, 10), "sus9": (0, 2, 5, 7, 10), "min69": (0, 2, 3, 7, 9),
-    "dom9": (0, 2, 4, 7, 10), "dom7s11": (0, 4, 6, 7, 10),
+    "maj9": (0, 2, 4, 7, 11),
+    "maj69": (0, 2, 4, 7, 9),
+    "min9": (0, 2, 3, 7, 10),
+    "min11": (0, 3, 5, 7, 10),
+    "sus9": (0, 2, 5, 7, 10),
+    "min69": (0, 2, 3, 7, 9),
+    "dom9": (0, 2, 4, 7, 10),
+    "dom7s11": (0, 4, 6, 7, 10),
     # scales
-    "major": (0, 2, 4, 5, 7, 9, 11), "minor": (0, 2, 3, 5, 7, 8, 10),
-    "dorian": (0, 2, 3, 5, 7, 9, 10), "phrygian": (0, 1, 3, 5, 7, 8, 10),
-    "lydian": (0, 2, 4, 6, 7, 9, 11), "mixolydian": (0, 2, 4, 5, 7, 9, 10),
-    "locrian": (0, 1, 3, 5, 6, 8, 10), "harmonic_minor": (0, 2, 3, 5, 7, 8, 11),
-    "pentatonic_major": (0, 2, 4, 7, 9), "pentatonic_minor": (0, 3, 5, 7, 10),
-    "whole_tone": (0, 2, 4, 6, 8, 10), "lydian_dominant": (0, 2, 4, 6, 7, 9, 10),
+    "major": (0, 2, 4, 5, 7, 9, 11),
+    "minor": (0, 2, 3, 5, 7, 8, 10),
+    "dorian": (0, 2, 3, 5, 7, 9, 10),
+    "phrygian": (0, 1, 3, 5, 7, 8, 10),
+    "lydian": (0, 2, 4, 6, 7, 9, 11),
+    "mixolydian": (0, 2, 4, 5, 7, 9, 10),
+    "locrian": (0, 1, 3, 5, 6, 8, 10),
+    "harmonic_minor": (0, 2, 3, 5, 7, 8, 11),
+    "pentatonic_major": (0, 2, 4, 7, 9),
+    "pentatonic_minor": (0, 3, 5, 7, 10),
+    "whole_tone": (0, 2, 4, 6, 8, 10),
+    "lydian_dominant": (0, 2, 4, 6, 7, 9, 10),
 }
 
 
 # Core tones (root, 3rd or sus, 5th, 7th or 6th) of chords with colour notes; every other chord's
 # tones are all core, and a scale's core is its triad.
 CORES = {
-    "maj7s11": (0, 4, 7, 11), "maj9": (0, 4, 7, 11), "maj69": (0, 4, 7, 9), "min9": (0, 3, 7, 10),
-    "min11": (0, 3, 7, 10), "sus9": (0, 5, 7, 10), "min69": (0, 3, 7, 9), "dom9": (0, 4, 7, 10),
+    "maj7s11": (0, 4, 7, 11),
+    "maj9": (0, 4, 7, 11),
+    "maj69": (0, 4, 7, 9),
+    "min9": (0, 3, 7, 10),
+    "min11": (0, 3, 7, 10),
+    "sus9": (0, 5, 7, 10),
+    "min69": (0, 3, 7, 9),
+    "dom9": (0, 4, 7, 10),
     "dom7s11": (0, 4, 7, 10),
 }
-SCALES = {"major", "minor", "dorian", "phrygian", "lydian", "mixolydian", "locrian", "harmonic_minor",
-          "pentatonic_major", "pentatonic_minor", "whole_tone", "lydian_dominant"}
+SCALES = {
+    "major",
+    "minor",
+    "dorian",
+    "phrygian",
+    "lydian",
+    "mixolydian",
+    "locrian",
+    "harmonic_minor",
+    "pentatonic_major",
+    "pentatonic_minor",
+    "whole_tone",
+    "lydian_dominant",
+}
 # The scale whose extra steps are a chord's non-chord tones (passing tones, neighbours, suspensions).
 PARENT_SCALES = {
-    "maj": "major", "maj7": "major", "maj9": "major", "maj69": "major", "maj7s11": "lydian",
-    "min": "dorian", "min7": "dorian", "min9": "dorian", "min11": "dorian", "min69": "dorian",
-    "sus2": "mixolydian", "sus4": "mixolydian", "sus9": "mixolydian", "dom7": "mixolydian",
-    "dom9": "mixolydian", "dom7s11": "lydian_dominant", "dim": "locrian", "m7b5": "locrian",
-    "dim7": "harmonic_minor", "aug": "whole_tone",
+    "maj": "major",
+    "maj7": "major",
+    "maj9": "major",
+    "maj69": "major",
+    "maj7s11": "lydian",
+    "min": "dorian",
+    "min7": "dorian",
+    "min9": "dorian",
+    "min11": "dorian",
+    "min69": "dorian",
+    "sus2": "mixolydian",
+    "sus4": "mixolydian",
+    "sus9": "mixolydian",
+    "dom7": "mixolydian",
+    "dom9": "mixolydian",
+    "dom7s11": "lydian_dominant",
+    "dim": "locrian",
+    "m7b5": "locrian",
+    "dim7": "harmonic_minor",
+    "aug": "whole_tone",
 }
 
 # Random harmony: extended chords of 4-6 notes, weighted towards the lush and consonant.
 HARMONY_WEIGHTS = {
-    "maj9": 3, "maj69": 3, "min9": 3, "min11": 2, "sus9": 2, "maj7s11": 2,
-    "min69": 1.5, "dom9": 1.5, "dom7s11": 1,
+    "maj9": 3,
+    "maj69": 3,
+    "min9": 3,
+    "min11": 2,
+    "sus9": 2,
+    "maj7s11": 2,
+    "min69": 1.5,
+    "dom9": 1.5,
+    "dom7s11": 1,
 }
 
 
@@ -181,8 +274,10 @@ B = PitchClass(11)
 
 m2, M2, m3, M3, P4, TT, P5, m6, M6, m7, M7 = range(1, 12)
 
-_ROOTS = {name: globals()[name] for name in
-          ("C", "Cs", "Db", "D", "Ds", "Eb", "E", "F", "Fs", "Gb", "G", "Gs", "Ab", "A", "As", "Bb", "B")}
+_ROOTS = {
+    name: globals()[name]
+    for name in ("C", "Cs", "Db", "D", "Ds", "Eb", "E", "F", "Fs", "Gb", "G", "Gs", "Ab", "A", "As", "Bb", "B")
+}
 
 
 def resolve_notes(spec: str, seed: int) -> PitchSet:

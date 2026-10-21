@@ -1,8 +1,28 @@
 import unittest
 from collections import Counter
 
-from utils.theory import (A, B, Bb, C, D, E, Eb, F, Fs, G, M3, P4, P5, As, HARMONY_WEIGHTS, PitchSet, fifths,
-                          fourths, parse_set, resolve_notes)
+from quintet.theory import (
+    HARMONY_WEIGHTS,
+    M3,
+    P4,
+    P5,
+    A,
+    As,
+    B,
+    Bb,
+    C,
+    D,
+    E,
+    Eb,
+    F,
+    Fs,
+    G,
+    PitchSet,
+    fifths,
+    fourths,
+    parse_set,
+    resolve_notes,
+)
 
 
 class PitchClassTest(unittest.TestCase):
@@ -39,7 +59,7 @@ class PitchSetTest(unittest.TestCase):
 
     def test_unknown_quality(self):
         with self.assertRaises(AttributeError) as cm:
-            C.nope
+            getattr(C, "nope")  # noqa: B009 (the attribute access itself is under test)
         self.assertIn("maj7s11", str(cm.exception))
 
     def test_transpose_and_circle(self):

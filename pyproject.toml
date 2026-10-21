@@ -1,6 +1,41 @@
 [project]
-name = "ww-quintet-loop"
-version = "0.1.0"
+name = "quintet"
+version = "0.2.0"
 description = "Generate phasing woodwind quintet pieces from a bundled sample library"
-requires-python = ">=3.10"
-dependencies = []
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "numpy>=2.2.6",
+    "pedalboard>=0.9.26",
+    "pyloudnorm>=0.2.0",
+]
+
+[project.scripts]
+quintet = "quintet.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/quintet"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E731",  # small lambdas are used deliberately
+    "B905",  # zip() pairs lists with their own shifted copies on purpose; strict= would be wrong
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.17.1",
+]

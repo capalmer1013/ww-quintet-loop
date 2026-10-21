@@ -1,6 +1,6 @@
 # Proper project: uv package, numpy rendering, pedalboard effects — design
 
-Status: approved in conversation 2026-10-20; awaiting written-spec review.
+Status: implemented 2026-10-20.
 Builds on: `2026-10-20-phasing-quintet-design.md` (the music design, unchanged here).
 
 ## Goal

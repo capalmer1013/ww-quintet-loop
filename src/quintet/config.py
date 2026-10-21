@@ -1,14 +1,15 @@
 """Run-wide settings: code defaults overridden by command-line flags."""
+
 from __future__ import annotations
 
 import argparse
+import random
 import sys
 from dataclasses import InitVar, dataclass, field, fields
 from pathlib import Path
-import random
 from typing import ClassVar
 
-DEFAULT_SAMPLE_ROOT = Path(__file__).resolve().parent.parent / "samples"
+DEFAULT_SAMPLE_ROOT = Path(__file__).resolve().parents[2] / "samples"  # the repository's samples/
 TEMPO_RANGE = (50, 70)  # bpm, inclusive, when the tempo is random per seed
 
 
@@ -22,12 +23,16 @@ class Config:
 
     sample_root: Path = field(default=DEFAULT_SAMPLE_ROOT, metadata={"help": "directory of instrument sample folders"})
     tempo: float = field(default=0.0, metadata={"help": "beats per minute; 0 = random 50-70 per seed"})
-    notes: str = field(default="random", metadata={
-        "help": "note set: random (key and chord), C.random (chord), or e.g. C.maj9, Fs.maj7s11, Bb.lydian"})
+    notes: str = field(
+        default="random",
+        metadata={"help": "note set: random (key and chord), C.random (chord), or e.g. C.maj9, Fs.maj7s11, Bb.lydian"},
+    )
     seeds: str = field(default="0", metadata={"help": "seed or range A-B (B exclusive); one piece per seed"})
     reverb: float = field(default=0.3, metadata={"help": "hall reverb amount (0 = dry)"})
     room: float = field(default=0.8, metadata={"help": "hall size, 0-1 (0.8 is about a 2.6 s decay)"})
-    master: bool = field(default=True, metadata={"help": "EQ, compress and loudness-normalise the mix for small speakers"})
+    master: bool = field(
+        default=True, metadata={"help": "EQ, compress and loudness-normalise the mix for small speakers"}
+    )
     max_seconds: float = field(default=360.0, metadata={"help": "longest allowed piece (one full phase cycle)"})
     output_dir: Path = field(default=Path("out"), metadata={"help": "where pieces are written"})
     stems: bool = field(default=False, metadata={"help": "also write one mono WAV per instrument"})

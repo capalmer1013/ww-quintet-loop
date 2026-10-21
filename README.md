@@ -5,14 +5,24 @@ voice cycles its own pattern of notes, drawn from one note set, over its own tim
 drift in and out of phase to make a polyrhythmic chord cloud. Each piece lasts exactly one full
 phase cycle, so it loops seamlessly.
 
-- `main.py`: generates one piece per seed.
-- `utils/`: theory, patterns, voices, sample loading and rendering.
+- `src/quintet/`: the package: theory, patterns, voices, sample loading, rendering and effects, plus
+  the `quintet` command.
 - `samples/`: the sample library.
+- `tests/`, `docs/`: tests and design notes.
 
-These three are everything needed to run it. Python 3.10+ only, with no dependencies.
-`tests/`, `docs/` and the `Makefile` are for development.
+It's a [uv](https://docs.astral.sh/uv/) project for Python 3.10–3.13. Rendering uses numpy, effects
+use [pedalboard](https://github.com/spotify/pedalboard), and loudness uses
+[pyloudnorm](https://github.com/csteinmetz1/pyloudnorm).
 
 ## Running
+
+Install once:
+
+```bash
+make sync
+```
+
+Then generate:
 
 ```bash
 make run ARGS="--seeds 1000-1010 --code"
@@ -36,16 +46,17 @@ Run `make` to list the targets, and `make run ARGS="--help"` for every flag.
 | `--code` | off | Also write `piece_<seed>.py`, which reproduces the piece |
 | `--sample-root` | `samples/` | Sample library location |
 
-Flags override any defaults set in code. Every field on `utils.Config` is a flag automatically.
+Flags override any defaults set in code. Every field on `quintet.Config` is a flag automatically.
+`make run` wraps `uv run quintet`, which you can also call directly.
 
 ## Piece files
 
 With `--code`, each piece is also written as a script:
 
 ```python
-from utils import *
+from quintet import *
 
-Config(tempo=60.0, reverb=0.3, room=0.8)
+Config(tempo=60.0, reverb=0.3, room=0.8, master=True)
 render('piece_2000', C.lydian,
     flute    = voice([6, 0, 5], beats=4, dynamic='mp'),
     oboe     = voice([2, 3, 4], beats=6),
@@ -55,7 +66,9 @@ render('piece_2000', C.lydian,
 )
 ```
 
-- Running `python3 out/piece_2000.py` rebuilds the identical WAV.
+- Running `uv run python out/piece_2000.py` rebuilds the identical WAV.
+- Piece files from before the move to the `quintet` package (`from utils import *`) no longer run.
+  Regenerate them with the same seeds: the notes come out the same.
 - Flags still apply, e.g. `--stems` or `--tempo 90`.
 - Edit the file to change a piece by hand.
 
@@ -68,7 +81,7 @@ render('piece_2000', C.lydian,
 - **Reich-style drift:** `drift=k` shortens the cycle to `beats * k/(k+1)`. The voice slowly pulls
   ahead and realigns with an undrifted partner after `k+1` of its own cycles.
 - **Dynamic:** one of `pp p mp mf f ff`, setting the voice's level.
-  - Recordings are capped per instrument (`MAX_LAYERS` in `utils/samples.py`): flute, oboe,
+  - Recordings are capped per instrument (`MAX_LAYERS` in `src/quintet/samples.py`): flute, oboe,
     clarinet and bassoon go up to `mf`, and the horn only to `mp`, so it blends instead of turning
     brassy. A louder dynamic is reached by levelling (gain), keeping the softer tone.
   - A note without that recording falls back to the nearest softer one.
@@ -103,7 +116,7 @@ render('piece_2000', C.lydian,
 
 ## Mix
 
-Each voice sits at a fixed spot in a mild stereo seating (`PAN` in `utils/render.py`, −1 left to
+Each voice sits at a fixed spot in a mild stereo seating (`PAN` in `src/quintet/render.py`, −1 left to
 +1 right):
 
 | flute | clarinet | bassoon | horn | oboe |
@@ -114,26 +127,25 @@ The two highest voices are spread apart, and the horn and bassoon sit near the m
 
 ## Mastering
 
-On by default (`--no-master` turns it off), in `utils/master.py`:
+On by default (`--no-master` turns it off), in `src/quintet/effects.py`, using pedalboard:
 
-- **EQ** on every recording: a steep cut below 60 Hz, about −3 dB around 250–330 Hz (boxiness), and
-  about +3.5 to +4 dB at 3–4.5 kHz, where phone speakers and ears are most sensitive.
+- **EQ:** a 12 dB/octave high-pass at 60 Hz (rumble), −3 dB at 300 Hz (boxiness), and +3.5 dB at
+  3.5 kHz, where phone speakers and ears are most sensitive.
 - **Compression:** gentle (2:1), from 8 dB below the target loudness, so quiet passages survive
   small speakers.
-- **Loudness:** every piece is normalised to about −16 LUFS (the usual level for phones and
-  streaming), with a −1 dBFS peak limiter.
-- **Seamless loops:** everything wraps at the loop point.
+- **Loudness:** every piece is normalised to −16 LUFS (the usual level for phones and streaming),
+  measured properly with pyloudnorm, with a −1 dBFS limiter.
+- **Seamless loops:** each stage first runs over the piece's own ending, so the loop point sounds
+  exactly as it does when the file repeats.
 
 ## Reverb
 
-The stereo mix goes through a Freeverb-style hall reverb, written in plain Python:
+The stereo mix goes through pedalboard's hall reverb:
 
-- **Design:** the mixed signal (one channel) feeds 6 echo-building filters with gentle
-  high-frequency damping, then 2 smoothing filters per side for a wide stereo image. A 20 ms
-  pre-delay keeps the dry notes clear.
+- **Amount:** `--reverb` sets the wet level, scaled so that `0.3` matches the earlier hall's
+  balance. `--room` sets the size.
 - **Seamless loops:** the reverb is fed the piece's own ending before its start, so the tail rings
   over the loop point exactly as it does when the file repeats.
-- **Speed:** it runs at half the sample rate, adding about 10 s to a 2-minute piece.
 - **Stems stay dry**, for mixing elsewhere.
 - `--reverb 0` gives exactly the dry mix.
 
@@ -171,7 +183,7 @@ towards the lush and consonant:
 
 - **Separate streams:** the harmony and the tempo each come from their own random stream for the
   seed. Fixing one (e.g. `--tempo 60`) doesn't change what the seed picks for the other.
-- **Weights:** `HARMONY_WEIGHTS` in `utils/theory.py` sets them.
+- **Weights:** `HARMONY_WEIGHTS` in `src/quintet/theory.py` sets them.
 
 ## Non-chord tones and voice leading
 
@@ -234,12 +246,12 @@ For `C.maj9` that gives:
 | oboe | D4 E4 G4 B4 |
 | flute | B4 C5 D5 E5 G5 B5 C6 |
 
-The constants are at the top of `utils/voice.py`.
+The constants are at the top of `src/quintet/voice.py`.
 
 ## Generation
 
 `generate(seed, notes)` writes each voice in its instrument's idiom. The `PROFILES` table in
-`utils/voice.py` holds these:
+`src/quintet/voice.py` holds these:
 
 - **Melodic walk:** each note moves from the previous one by a weighted repeat, step (next palette
   note), skip (two palette notes) or leap.
@@ -304,10 +316,16 @@ samples/<instrument>/extended/<technique>/<instrument>_<note>_<technique>_<dynam
 - **Levelling:** the recordings' levels differ by up to about 14 dB between instruments, so every
   sample is scaled until its loudest 0.3 s reaches a target for the dynamic it's playing:
   `mf` = −24 dBFS RMS, `pp` −12 dB, `p` −8 dB, `mp` −4 dB, `f` +3 dB, `ff` +6 dB.
-  `INSTRUMENT_TRIM_DB` in `utils/render.py` adjusts each instrument by ear.
+  `INSTRUMENT_TRIM_DB` in `src/quintet/render.py` adjusts each instrument by ear.
 
 ## Development
 
-```bash
-make test
-```
+| Command | Does |
+|---|---|
+| `make sync` | install the project and its dependencies |
+| `make test` | run the tests (pytest) |
+| `make lint` | check the code (ruff) |
+| `make format` | format the code (ruff) |
+
+`tests/test_generation_parity.py` pins 20 seeds' music as it was generated before the move to this
+package. If you change generation on purpose, regenerate `tests/fixtures/generation.json`.
