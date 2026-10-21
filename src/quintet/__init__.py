@@ -30,7 +30,19 @@ from .samples import (
 )
 from .theory import *  # noqa: F403  (pitch classes C..B, intervals, PitchSet, fifths, fourths, parse_set, ...)
 from .theory import __all__ as _theory_all
-from .voice import PROFILES, Profile, Voice, generate, palette, parallels, piece_beats, resolve_pitch, voice
+from .voice import (
+    PROFILES,
+    Profile,
+    Voice,
+    clashes,
+    generate,
+    palette,
+    parallels,
+    piece_beats,
+    resolve_pitch,
+    too_close,
+    voice,
+)
 
 __all__ = [
     "Config",
@@ -70,6 +82,8 @@ __all__ = [
     "generate",
     "palette",
     "parallels",
+    "clashes",
+    "too_close",
     "piece_beats",
     "resolve_pitch",
     "voice",

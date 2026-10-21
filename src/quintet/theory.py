@@ -137,18 +137,9 @@ PARENT_SCALES = {
     "aug": "whole_tone",
 }
 
-# Random harmony: extended chords of 4-6 notes, weighted towards the lush and consonant.
-HARMONY_WEIGHTS = {
-    "maj9": 3,
-    "maj69": 3,
-    "min9": 3,
-    "min11": 2,
-    "sus9": 2,
-    "maj7s11": 2,
-    "min69": 1.5,
-    "dom9": 1.5,
-    "dom7s11": 1,
-}
+# Random harmony: whole 7-note modes, weighted towards the warmer ones (locrian never). Colour comes
+# from where voices sit, not from crowding: see the spacing rule in voice.py.
+HARMONY_WEIGHTS = {"lydian": 3, "dorian": 3, "mixolydian": 2, "major": 2, "minor": 2, "phrygian": 1}
 
 
 class PitchClass(int):

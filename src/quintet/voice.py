@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import math
 import random
+from bisect import bisect_right
 from dataclasses import dataclass, replace
 from fractions import Fraction
 from functools import reduce
@@ -12,10 +13,31 @@ from itertools import combinations
 
 from .config import Config
 from .pattern import _CONTINUE, STEP, _, event_paths, expand, leaves
-from .samples import DYNAMICS, QUINTET, SAMPLE_RATE, Instrument, instrument, midi_to_note, sustainable_frames
+from .samples import (
+    DYNAMICS,
+    QUINTET,
+    SAMPLE_RATE,
+    Instrument,
+    instrument,
+    midi_to_note,
+    note_to_midi,
+    sustainable_frames,
+)
 from .theory import PitchSet
 
-__all__ = ["Voice", "voice", "piece_beats", "palette", "generate", "Profile", "PROFILES", "resolve_pitch", "parallels"]
+__all__ = [
+    "Voice",
+    "voice",
+    "piece_beats",
+    "palette",
+    "generate",
+    "Profile",
+    "PROFILES",
+    "resolve_pitch",
+    "parallels",
+    "clashes",
+    "too_close",
+]
 
 # --- spacing: each voice is centred on a partial of a low fundamental on the set's root, and owns
 # the band halfway to its neighbours' centres, so bands are wide at the bottom and narrow on top ---
@@ -24,6 +46,14 @@ LOW_TO_HIGH = ("bassoon", "horn", "clarinet", "oboe", "flute")
 PARTIALS = (2, 3, 4, 6, 8)  # per LOW_TO_HIGH; for C: C3 G3 C4 G4 C5
 OUTER_REACH = 12  # semitones below the lowest centre / above the highest
 MIN_PALETTE = 3  # widen a band a semitone each side until it has this many notes
+# each instrument's best-sounding register (sounding pitch); a band never reaches outside it
+SWEET = {
+    "flute": ("E4", "A6"),  # above the breathy low end, below the shrill top
+    "oboe": ("E4", "Cs6"),  # above the honky bottom fifth, below the piercing top
+    "clarinet": ("E3", "G6"),
+    "horn": ("A2", "F5"),  # above the pedal tones, below the strained top
+    "bassoon": ("As1", "E4"),  # below the thin tenor register
+}
 
 
 # --- generation ---
@@ -32,12 +62,11 @@ class Profile:
     """How one instrument tends to play. Lines are a walk over its palette (see _walk)."""
 
     moves: tuple[float, float, float, float]  # weights: repeat, step (±1), skip (±2), leap (±3+)
-    split: float  # chance a slot subdivides into a quick figure
-    figure: str  # what a subdivision plays: run, pair, arpeggio, repeat, bounce
+    split: float  # chance a beat starts a quick figure, in eighths
+    figure: str  # what a figure plays: run, pair, arpeggio, repeat, bounce
     figure_notes: tuple[int, int]  # notes in a figure, inclusive
-    rest: float  # chance a slot rests (breathing)
-    hold: float  # chance a slot holds the previous note
-    slots: tuple[int, int]  # slots per phrase cell, inclusive
+    rest: float  # chance a beat rests (breathing)
+    hold: float  # chance a beat holds the previous note
     beats: tuple[int, int]  # phrase cell length in beats, inclusive (a cycle strings several cells)
     sustain: float  # relative chance of being a sustaining voice (follows how long its recordings last)
     anchors: tuple[int, ...] = ()  # semitones above the root weighted x2 (0 root, 7 fifth)
@@ -55,7 +84,6 @@ PROFILES = {
         (3, 4),
         0.05,
         0.10,
-        (3, 6),
         (2, 8),
         2.5,
         passing=0.5,
@@ -69,7 +97,6 @@ PROFILES = {
         (2, 2),
         0.20,
         0.20,
-        (2, 5),
         (3, 8),
         0.5,
         passing=0.45,
@@ -83,7 +110,6 @@ PROFILES = {
         (2, 4),
         0.10,
         0.15,
-        (2, 6),
         (2, 8),
         3,
         passing=0.45,
@@ -97,7 +123,6 @@ PROFILES = {
         (2, 3),
         0.10,
         0.25,
-        (2, 5),
         (3, 8),
         3,
         anchors=(0, 7),
@@ -112,7 +137,6 @@ PROFILES = {
         (2, 2),
         0.15,
         0.10,
-        (2, 6),
         (2, 8),
         1,
         anchors=(0,),
@@ -122,20 +146,30 @@ PROFILES = {
         suspension=0.1,
     ),
 }
-REPAIR_STEPS = 60  # nudges allowed to clear a candidate of parallel 5ths/octaves
+# space: moving lines breathe between phrases rather than playing a wall of notes
+P_CELL_END_REST = 0.7  # chance a phrase cell (of 3+ beats) ends on a rest
+P_SILENT_CELL = 0.25  # chance a phrase cell after the first is silent: the voice sits out a phrase
+REPAIR_STEPS = 150  # nudges allowed to clear a candidate of parallels and too many clashes
+
+# spacing between notes sounding together (low interval limits): an interval of n semitones only
+# sounds clear with its lower note at or above SPACING_FLOOR[n]; dissonances need to sit higher.
+# Wider than an octave counts as the octave-smaller interval with its limit an octave lower.
+SPACING_FLOOR = {1: 72, 2: 67, 3: 48, 4: 46, 5: 45, 6: 60, 7: 34, 8: 41, 9: 41, 10: 41, 11: 48}
+CLASHES_PER_MINUTE = 1.5  # a soft rule: this many too-close moments per minute are tolerated
 CYCLE_SECONDS = (6, 10)  # each voice's loop, at the piece's tempo (rounded to whole beats)
-DRIFT_CHANCE, DRIFTS, MAX_DRIFTING = 0.2, (8, 12, 16, 24), 2  # drift is kept only if the cycle stays in range
 MIN_DISTINCT_SPANS = 3  # at least this many different cycle lengths, so the voices phase
 MAX_ATTEMPTS = 100_000  # cycle-length draws are cheap; patterns are only written for ones that fit
 # sustaining voices: a few long notes filling the cycle
 SUSTAINERS = (1, 2)  # voices per piece, inclusive
 SUSTAIN_NOTES = (2, 4)  # notes per cycle, inclusive (fewer if the cycle is short)
 SUSTAIN_MIN_BEATS = 3  # each sustained note is held at least this long
-P_SUSTAIN_REST = 0.3  # chance of a one-beat rest closing the cycle
+P_SUSTAIN_REST = 0.6  # chance of a rest closing the cycle...
+SUSTAIN_REST_BEATS = (1, 2)  # ...this many beats long, inclusive
 GEN_SOFTEST = "p"  # generated dynamics run from this up to each instrument's max_layer
 
 # --- volume sine (LFO): each voice ebbs and flows on its own slow sine, out of step with its cycle ---
 LFO_DEPTH_DB = 12.0  # quietest point, relative to the loudest
+LFO_START_PHASE = 0.5  # every sine starts (and so, after whole cycles, ends) at its quietest
 LFO_PEAK_DB = -4.0  # the loudest point, relative to the voice's level
 LFO_SECONDS = (10.0, 30.0)  # preferred period; must still fit a whole number of times in the piece
 
@@ -209,16 +243,18 @@ VOICING = {"bassoon": "bass", "horn": "core", "clarinet": "all", "oboe": "all", 
 
 def palette(notes: PitchSet, inst: Instrument) -> list[int]:
     """MIDI pitches this instrument chooses from: its band (see PARTIALS) of the set's tones it may
-    play (see VOICING)."""
+    play (see VOICING), within its sweet range (see SWEET)."""
     classes = {"bass": notes.bass, "core": notes.core, "all": notes.pitch_classes}[VOICING[inst.name]]
     fundamental = FUNDAMENTAL_NEAR + (notes.root + 5) % 12 - 5
     centres = [fundamental + round(12 * math.log2(p)) for p in PARTIALS]
     i = LOW_TO_HIGH.index(inst.name)
     lo = (centres[i - 1] + centres[i]) // 2 + 1 if i > 0 else centres[i] - OUTER_REACH
     hi = (centres[i] + centres[i + 1]) // 2 if i < len(centres) - 1 else centres[i] + OUTER_REACH
-    low, high = min(inst.playable), max(inst.playable)
+    sweet_low, sweet_high = (note_to_midi(n) for n in SWEET[inst.name])
+    playable = {m for m in inst.playable if sweet_low <= m <= sweet_high}
+    low, high = min(playable), max(playable)
     while True:
-        tones = [m for m in notes.pitches(lo, hi, classes) if m in inst.playable]
+        tones = [m for m in notes.pitches(lo, hi, classes) if m in playable]
         if len(tones) >= MIN_PALETTE or (lo <= low and hi >= high):
             return tones
         lo, hi = lo - 1, hi + 1
@@ -231,6 +267,8 @@ def resolve_pitch(index: int | str, tones: list[int], notes: PitchSet, playable=
         return tones[(index - 1) % len(tones)]
     k, sign = STEP.fullmatch(index).groups()
     base = tones[(int(k) - 1) % len(tones)]
+    if sign == "=":  # the same note, renewed
+        return base
     scale = set(notes.scale.pitch_classes)
     step = 1 if sign == "+" else -1
     m = next((base + step * d for d in (1, 2) if (base + step * d) % 12 in scale), base)
@@ -265,9 +303,10 @@ class _Walk:
         self.cur = self._choose(weight)
         return self.cur
 
-    def figure(self) -> list[int]:
-        """A quick subdivided figure in the instrument's idiom, continuing the walk."""
-        p, n, size = self.profile, self.rng.randint(*self.profile.figure_notes), len(self.tones)
+    def figure(self, most: int) -> list[int]:
+        """A quick figure of at most `most` notes in the instrument's idiom, continuing the walk."""
+        p, size = self.profile, len(self.tones)
+        n = min(most, self.rng.randint(*p.figure_notes))
         if p.figure == "repeat":
             return [self.cur] * n
         if p.figure == "bounce":
@@ -297,17 +336,36 @@ class _Walk:
 
 
 def _pattern(walk: _Walk, beats: int) -> list:
-    """A moving line for a cycle of `beats`: several equal phrase cells (each about the profile's
-    cell length), the walk carrying on from one to the next."""
-    cells = max(2, round(beats / walk.rng.randint(*walk.profile.beats)))
-    return [_cell(walk, first=i == 0) for i in range(cells)]
+    """A moving line for a cycle of `beats`, one slot per beat, so every note lands on the shared
+    eighth-note pulse: phrase cells of whole beats (each about the profile's cell length, at least
+    two of them), the walk carrying on from one to the next."""
+    rng, (low, high) = walk.rng, walk.profile.beats
+    slots: list = []
+    while len(slots) < beats:
+        left = beats - len(slots)
+        size = min(rng.randint(low, high), left - low if not slots else left)
+        if left - size < low:
+            size = left  # no stub of a cell at the end
+        if slots and rng.random() < P_SILENT_CELL:
+            slots += [0] + [_] * (size - 1)  # the voice sits out a phrase
+        else:
+            slots += _cell(walk, size, first=not slots)
+    return slots
 
 
-def _cell(walk: _Walk, first: bool) -> list:
-    """One phrase cell, with passing and neighbour tones on weak half-slots."""
+def _eighths(notes: list[int]) -> list:
+    """A figure as beats: pairs of eighths, an odd last note taking the whole beat."""
+    return [notes[i : i + 2] if i + 1 < len(notes) else notes[i] for i in range(0, len(notes), 2)]
+
+
+def _cell(walk: _Walk, size: int, first: bool) -> list:
+    """One phrase cell of `size` one-beat slots, with passing and neighbour tones as eighths,
+    sometimes ending on a rest (P_CELL_END_REST)."""
     p, rng = walk.profile, walk.rng
+    end_rest = size >= 3 and rng.random() < P_CELL_END_REST
+    room = size - end_rest
     slots: list = [walk.cur if first else walk.next()]
-    for _i in range(rng.randint(*p.slots) - 1):
+    while len(slots) < room:
         r = rng.random()
         if r < p.hold:
             slots.append(_)
@@ -315,7 +373,7 @@ def _cell(walk: _Walk, first: bool) -> list:
             slots.append(0)
         elif r < p.hold + p.rest + p.split:
             walk.next()
-            slots.append(walk.figure())
+            slots += _eighths(walk.figure(2 * (room - len(slots))))
         else:
             a, b = slots[-1], walk.next()
             if type(a) is int and a and 3 <= abs(walk.pitch(b) - walk.pitch(a)) <= 4 and rng.random() < p.passing:
@@ -323,20 +381,21 @@ def _cell(walk: _Walk, first: bool) -> list:
                 lo, hi = sorted((walk.pitch(a), walk.pitch(b)))
                 if passing and lo < walk.pitch(passing) < hi:
                     slots[-1] = [a, passing]  # a, then the passing tone, then on by step to b
-            if rng.random() < p.neighbour:
+            if len(slots) + 2 <= room and rng.random() < p.neighbour:
                 neighbour = walk.non_chord_step(b, rng.choice("+-"))
                 if neighbour:
-                    slots.append([b, neighbour, b])
+                    slots += [[b, neighbour], b]  # b, the neighbour, back to b on the next beat
                     continue
             slots.append(b)
-    return slots
+    return slots + [0] * end_rest
 
 
 def _sustain_pattern(walk: _Walk, beats: int) -> list:
     """A few long notes filling a cycle of `beats` one-beat slots, some as suspensions (the step
     above, held, resolving down onto the note)."""
     rng, p = walk.rng, walk.profile
-    rest = int(rng.random() < P_SUSTAIN_REST and beats >= 7)  # a closing one-beat breath
+    rest = rng.randint(*SUSTAIN_REST_BEATS) if rng.random() < P_SUSTAIN_REST else 0  # a closing breath
+    rest = min(rest, beats - 2 * SUSTAIN_MIN_BEATS) if beats >= 2 * SUSTAIN_MIN_BEATS + 1 else 0
     count = max(1, min(rng.randint(*SUSTAIN_NOTES), (beats - rest) // SUSTAIN_MIN_BEATS))
     # held lengths: a random split of the remaining beats into `count` parts of SUSTAIN_MIN_BEATS+
     extra = beats - rest - SUSTAIN_MIN_BEATS * count
@@ -368,27 +427,85 @@ def _onsets(v: Voice, pitch, total: Fraction) -> dict[Fraction, tuple[int | None
     return {t: (events[i - 1][1], p, k) for i, (t, p, k) in enumerate(events)}  # i-1 wraps: it loops
 
 
-def parallels(voices: dict[str, Voice], notes: PitchSet, config: Config | None = None) -> list[tuple]:
-    """Parallel (or contrary) perfect 5ths and octaves: both voices move at the same moment from a
-    5th/octave/unison apart to the same interval again. Returns (beat, voice_a, voice_b, ordinal_a,
-    ordinal_b) for each."""
+def _timeline(name: str, v: Voice, notes: PitchSet, total: Fraction, config: Config) -> tuple[dict, list]:
+    """A voice's onsets (see _onsets) and sounding notes (see _notes) over the piece."""
+    inst = instrument(name, config)
+    tones = palette(notes, inst)
+    pitch = lambda i: resolve_pitch(i, tones, notes, inst.playable)
+    return _onsets(v, pitch, total), _notes(v, pitch, total)
+
+
+def _timelines(voices: dict[str, Voice], notes: PitchSet, config: Config | None) -> dict[str, tuple]:
     config = config or Config.current()
     total = piece_beats(voices.values())
-    onsets = {}
-    for name, v in voices.items():
-        inst = instrument(name, config)
-        tones = palette(notes, inst)
-        onsets[name] = _onsets(v, lambda i, t=tones, pl=inst.playable: resolve_pitch(i, t, notes, pl), total)
+    return {name: _timeline(name, v, notes, total, config) for name, v in voices.items()}
+
+
+def _parallels_in(lines: dict[str, tuple]) -> list[tuple]:
     found = []
     for a, b in combinations(QUINTET, 2):
-        for t in onsets[a].keys() & onsets[b].keys():
-            (a0, a1, ka), (b0, b1, kb) = onsets[a][t], onsets[b][t]
+        onsets_a, onsets_b = lines[a][0], lines[b][0]
+        for t in onsets_a.keys() & onsets_b.keys():
+            (a0, a1, ka), (b0, b1, kb) = onsets_a[t], onsets_b[t]
             if None in (a0, a1, b0, b1) or a0 == a1 or b0 == b1:
                 continue
             before, after = abs(a0 - b0) % 12, abs(a1 - b1) % 12
             if before == after and before in (0, 7):
                 found.append((t, a, b, ka, kb))
     return sorted(found)
+
+
+def _clashes_in(lines: dict[str, tuple]) -> list[tuple]:
+    found = set()
+    for a, b in combinations(QUINTET, 2):
+        for x, y in ((a, b), (b, a)):
+            held_y = lines[y][1]
+            starts = [n[0] for n in held_y]
+            for t, _end, p, k in lines[x][1]:
+                i = bisect_right(starts, t) - 1
+                if i >= 0 and held_y[i][1] > t and too_close(p, held_y[i][2]):
+                    found.add((t, x, y, k, held_y[i][3]))
+    return sorted(found)
+
+
+def parallels(voices: dict[str, Voice], notes: PitchSet, config: Config | None = None) -> list[tuple]:
+    """Parallel (or contrary) perfect 5ths and octaves: both voices move at the same moment from a
+    5th/octave/unison apart to the same interval again. Returns (beat, voice_a, voice_b, ordinal_a,
+    ordinal_b) for each."""
+    return _parallels_in(_timelines(voices, notes, config))
+
+
+def clashes(voices: dict[str, Voice], notes: PitchSet, config: Config | None = None) -> list[tuple]:
+    """Moments where a note starts too close (too_close) to a note another voice is sounding.
+    Returns (beat, voice_a, voice_b, ordinal_a, ordinal_b), voice_a being the one that starts."""
+    return _clashes_in(_timelines(voices, notes, config))
+
+
+def too_close(p: int, q: int) -> bool:
+    """Whether two simultaneous pitches sit closer than their register allows (SPACING_FLOOR)."""
+    low, d = min(p, q), abs(p - q)
+    if d == 0 or d >= 24 or d == 12:
+        return False
+    if d > 12:
+        return low < SPACING_FLOOR[d - 12] - 12
+    return low < SPACING_FLOOR[d]
+
+
+def _notes(v: Voice, pitch, total: Fraction) -> list[tuple[float, float, int, int]]:
+    """(start, end, pitch, event ordinal in the cycle) of every note over the piece. Times are floats
+    (equal fractions give equal floats, and the clash search runs much faster on them)."""
+    one = expand(v.pattern, v.span)
+    out: list = []
+    for c in range(int(total / v.span)):
+        for k, e in enumerate(one):
+            start = c * v.span + e.start
+            if e.index == _CONTINUE:
+                if out:
+                    s, _end, p, kk = out[-1]
+                    out[-1] = (s, start + e.beats, p, kk)
+                continue
+            out.append((start, start + e.beats, None if e.index is None else pitch(e.index), k))
+    return [(float(a), float(b), p, k) for a, b, p, k in out if p is not None]
 
 
 def _leaf(pattern: list, path: tuple[int, ...]):
@@ -400,12 +517,21 @@ def _leaf(pattern: list, path: tuple[int, ...]):
 def _repair(
     rng: random.Random, voices: dict[str, Voice], notes: PitchSet, sizes: dict[str, int], config: Config
 ) -> dict[str, Voice] | None:
-    """Nudge notes to neighbouring palette notes until no parallel 5ths/octaves remain (None if
-    REPAIR_STEPS isn't enough)."""
+    """Nudge notes to neighbouring palette notes until no parallel 5ths/octaves remain and clashes
+    (too-close simultaneous notes) are down to CLASHES_PER_MINUTE (None if REPAIR_STEPS isn't
+    enough). Parallels are fixed first; an edit is kept only if it improves (parallels, excess clashes)."""
     voices = {n: replace(v, pattern=copy.deepcopy(v.pattern)) for n, v in voices.items()}
-    found = parallels(voices, notes, config)
+    total = piece_beats(voices.values())
+    allowed = int(CLASHES_PER_MINUTE * float(total) / config.bpm())
+    lines = _timelines(voices, notes, config)  # kept up to date one voice at a time
+
+    def problems():
+        par, cl = _parallels_in(lines), _clashes_in(lines)
+        return (len(par), max(0, len(cl) - allowed)), par or cl
+
+    score, found = problems()
     for _step in range(REPAIR_STEPS):
-        if not found:
+        if score == (0, 0):
             return voices
         _t, a, b, ka, kb = found[0]
         improved = False
@@ -421,18 +547,21 @@ def _repair(
                 parent = parent[i]
             leaf = base = parent[path[-1]]
             options = [c for c in (base - 1, base + 1) if 1 <= c <= sizes[name] and c != leaf]
+            before = lines[name]
             for option in rng.sample(options, len(options)):
                 parent[path[-1]] = option
-                after = parallels(voices, notes, config)
-                if len(after) < len(found):
-                    found, improved = after, True
+                lines[name] = _timeline(name, voices[name], notes, total, config)
+                new_score, new_found = problems()
+                if new_score < score:
+                    score, found, improved = new_score, new_found, True
                     break
                 parent[path[-1]] = leaf
+                lines[name] = before
             if improved:
                 break
         if not improved:
             return None
-    return voices if not found else None
+    return voices if score == (0, 0) else None
 
 
 def _max_beats(inst: Instrument, midi: int, dynamic: str, beat_seconds: Fraction) -> Fraction:
@@ -442,9 +571,9 @@ def _max_beats(inst: Instrument, midi: int, dynamic: str, beat_seconds: Fraction
 
 
 def _rearticulate(v: Voice, inst: Instrument, notes: PitchSet, beat_seconds: Fraction) -> Voice:
-    """Re-attack notes held longer than the instrument can sustain them: a hold that would carry a
-    note past its limit sounds the note again, and a single slot that is itself too long splits
-    into repeated notes."""
+    """Renew notes held longer than the instrument can sustain them: a hold that would carry a note
+    past its limit becomes "k=" (the same note, renewed seamlessly), and a single slot that is itself
+    too long splits into the note followed by renewals."""
     pattern = copy.deepcopy(v.pattern)
     tones = palette(notes, inst)
     limit = {}
@@ -455,18 +584,22 @@ def _rearticulate(v: Voice, inst: Instrument, notes: PitchSet, beat_seconds: Fra
             limit[m] = _max_beats(inst, m, v.dynamic, beat_seconds)
         return limit[m]
 
+    def renewed(index) -> str:
+        return f"{index if type(index) is int else STEP.fullmatch(index).group(1)}="
+
     current, held = None, Fraction(0)
     for path, _start, beats, leaf in leaves(pattern, v.span):
+        written = leaf
         if leaf is _ and current is not None:
             if held + beats <= most(current):
                 held += beats
                 continue
-            leaf = current  # this hold re-attacks the note
+            leaf, written = current, renewed(current)  # this hold renews the note
         if leaf is _ or leaf == 0:
             current, held = None, Fraction(0)
             continue
         parts = math.ceil(beats / most(leaf))
-        _set(pattern, path, leaf if parts == 1 else [leaf] * parts)
+        _set(pattern, path, written if parts == 1 else [written] + [renewed(leaf)] * (parts - 1))
         current, held = leaf, beats / parts
     return replace(v, pattern=pattern)
 
@@ -507,34 +640,25 @@ def generate(seed: int, notes: PitchSet, config: Config | None = None) -> dict[s
     low, high = math.ceil(CYCLE_SECONDS[0] / beat_seconds), math.floor(CYCLE_SECONDS[1] / beat_seconds)
     for _attempt in range(MAX_ATTEMPTS):
         # cycle lengths first (cheap): only write patterns for a set that realigns in time
-        cycles, drifting = {}, 0
-        for name in QUINTET:
-            beats, drift = rng.randint(low, high), 0
-            if drifting < MAX_DRIFTING and rng.random() < DRIFT_CHANCE:
-                k = rng.choice(DRIFTS)
-                if Fraction(beats * k, k + 1) >= low:
-                    drift, drifting = k, drifting + 1
-            cycles[name] = (beats, drift)
-        spans = [Voice([1], b, d).span for b, d in cycles.values()]
+        cycles = {name: rng.randint(low, high) for name in QUINTET}
+        spans = [Fraction(b) for b in cycles.values()]
         total = reduce(_lcm, spans)
         if total * beat_seconds > config.max_seconds or len(set(spans)) < MIN_DISTINCT_SPANS:
             continue
         voices = {}
         sustainers = _pick_sustainers(rng)
         for name in QUINTET:
-            beats, drift = cycles[name]
+            beats = cycles[name]
             walk = _Walk(rng, palettes[name], notes, PROFILES[name], instrument(name, config).playable)
             pattern = (_sustain_pattern if name in sustainers else _pattern)(walk, beats)
             top = DYNAMICS.index(instrument(name, config).max_layer)
-            voices[name] = Voice(pattern, beats, drift, rng.choice(DYNAMICS[DYNAMICS.index(GEN_SOFTEST) : top + 1]))
+            voices[name] = Voice(pattern, beats, 0, rng.choice(DYNAMICS[DYNAMICS.index(GEN_SOFTEST) : top + 1]))
         voices = _repair(rng, voices, notes, {n: len(t) for n, t in palettes.items()}, config)
         if voices is None:
             continue
         voices = {n: _rearticulate(v, instrument(n, config), notes, beat_seconds) for n, v in voices.items()}
         return {
-            name: replace(
-                v, lfo=_lfo(rng, int(total / v.span), float(total * beat_seconds)), lfo_phase=round(rng.random(), 2) % 1
-            )
+            name: replace(v, lfo=_lfo(rng, int(total / v.span), float(total * beat_seconds)), lfo_phase=LFO_START_PHASE)
             for name, v in voices.items()
         }
     raise ValueError(f"seed {seed}: no piece fits in {config.max_seconds}s; raise --max-seconds")

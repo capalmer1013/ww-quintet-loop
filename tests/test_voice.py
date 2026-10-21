@@ -1,5 +1,6 @@
 import unittest
 from fractions import Fraction as Fr
+from functools import cache
 
 from quintet import (
     QUINTET,
@@ -7,7 +8,9 @@ from quintet import (
     C,
     Config,
     Fs,
+    PitchClass,
     _,
+    clashes,
     expand,
     generate,
     instrument,
@@ -17,9 +20,12 @@ from quintet import (
     piece_beats,
     resolve_notes,
     resolve_pitch,
+    too_close,
     voice,
 )
-from quintet.voice import LFO_DEPTH_DB, LFO_PEAK_DB, LOW_TO_HIGH
+from quintet.pattern import STEP
+from quintet.samples import note_to_midi
+from quintet.voice import CLASHES_PER_MINUTE, LFO_DEPTH_DB, LFO_PEAK_DB, LOW_TO_HIGH, SWEET
 
 Config(argv=[], tempo=60)
 
@@ -68,6 +74,16 @@ class LfoTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 voice([1], beats=4, **kwargs)
 
+    def test_generated_sines_start_and_end_at_their_quietest(self):
+        from quintet.voice import LFO_DEPTH_DB, LFO_PEAK_DB
+
+        quietest = 10 ** ((LFO_PEAK_DB - LFO_DEPTH_DB) / 20)
+        for s in range(10):
+            for x in generate(s, resolve_notes("random", s)).values():
+                self.assertAlmostEqual(x.gain(0.0), quietest)
+                self.assertAlmostEqual(x.gain(1.0), quietest)  # whole cycles: the loop point matches
+                self.assertGreater(max(x.gain(i / 200) for i in range(200)), 2 * quietest)  # it still swells
+
     def test_generated_sines_are_slow_and_out_of_step(self):
         out_of_step = total_voices = 0
         for s in range(40):
@@ -83,14 +99,25 @@ class LfoTest(unittest.TestCase):
         self.assertGreater(out_of_step / total_voices, 0.7)
 
 
+@cache
+def generated(seed: int, notes) -> dict:
+    """generate() at 60 bpm, cached: several tests look at the same pieces."""
+    return generate(seed, notes, Config(argv=[], tempo=60))
+
+
 def moves(name, seeds=range(60)):
     """Fraction of consecutive notes in an instrument's generated lines (over C.lydian) that repeat,
     step (1-2 semitones), or leap (a 4th or more)."""
     counts = {"repeat": 0, "step": 0, "leap": 0, "all": 0}
     tones = palette(C.lydian, instrument(name))
     for s in seeds:
-        v = generate(s, C.lydian)[name]
-        notes = [tones[(e.index - 1) % len(tones)] for e in expand(v.pattern, v.span) if e.index]
+        v = generated(s, C.lydian)[name]
+        # renewals ("3=") continue a held note rather than repeat it
+        notes = [
+            resolve_pitch(e.index, tones, C.lydian)
+            for e in expand(v.pattern, v.span)
+            if e.index and not (isinstance(e.index, str) and e.index.endswith("="))
+        ]
         for a, b in zip(notes, notes[1:]):
             d = abs(a - b)
             counts["all"] += 1
@@ -119,7 +146,10 @@ class IdiomTest(unittest.TestCase):
         for s in range(30):
             for name, v in generate(s, C.lydian).items():
                 size = len(palette(C.lydian, instrument(name)))
-                self.assertTrue(all(1 <= e.index <= size for e in expand(v.pattern, v.span) if e.index))
+                for e in expand(v.pattern, v.span):
+                    if e.index:
+                        k = e.index if isinstance(e.index, int) else int(STEP.fullmatch(e.index).group(1))
+                        self.assertTrue(1 <= k <= size)
 
 
 class PaletteTest(unittest.TestCase):
@@ -135,6 +165,18 @@ class PaletteTest(unittest.TestCase):
             self.assertEqual(lows, sorted(lows), notes)
             # the two lowest voices sit far apart: bassoon's lowest at least a fifth under horn's
             self.assertGreaterEqual(min(palettes["horn"]) - min(palettes["bassoon"]), 7, notes)
+
+    def test_palettes_stay_in_each_instruments_sweet_range(self):
+        from quintet.theory import QUALITIES
+
+        for quality in QUALITIES:
+            for root in range(12):
+                notes = getattr(PitchClass(root), quality)
+                for name in QUINTET:
+                    low, high = (note_to_midi(n) for n in SWEET[name])
+                    tones = palette(notes, instrument(name))
+                    self.assertGreaterEqual(len(tones), 3, (notes, name))
+                    self.assertTrue(low <= min(tones) and max(tones) <= high, (notes, name, tones))
 
 
 class VoicingTest(unittest.TestCase):
@@ -170,15 +212,17 @@ class NonChordToneTest(unittest.TestCase):
         self.assertEqual(resolve_pitch("2+", tones, C.maj9, playable={60, 64}), 64)  # unplayable: stays
 
     def test_generated_non_chord_tones_resolve_by_step(self):
+        # modes have no non-chord tones (every step is in the mode), so use chords
+        chords = ("maj9", "min9", "maj7s11", "dom9", "min69", "dom7s11", "maj69", "min11", "sus9")
         seen = 0
         for s in range(60):
-            notes = resolve_notes("random", s)
+            notes = getattr(PitchClass(s), chords[s % len(chords)])
             for name, v in generate(s, notes).items():
                 inst = instrument(name)
                 tones = palette(notes, inst)
                 events = [e for e in expand(v.pattern, v.span) if e.index]
                 for i, e in enumerate(events):
-                    if isinstance(e.index, str):
+                    if isinstance(e.index, str) and e.index[-1] in "+-":  # "3=" is a renewal, not a step
                         seen += 1
                         here = resolve_pitch(e.index, tones, notes, inst.playable)
                         after = resolve_pitch(events[(i + 1) % len(events)].index, tones, notes, inst.playable)
@@ -210,6 +254,19 @@ class ParallelsTest(unittest.TestCase):
 
 
 class RearticulationTest(unittest.TestCase):
+    def test_renewals_mark_holds_the_recording_cannot_carry(self):
+        renewed = 0
+        for s in range(20):
+            for x in generate(s, resolve_notes("random", s)).values():
+                events = [e.index for e in expand(x.pattern, x.span)]
+                for i, idx in enumerate(events):
+                    if isinstance(idx, str) and idx.endswith("="):
+                        renewed += 1
+                        before = events[i - 1]
+                        base = before if isinstance(before, int) else int(STEP.fullmatch(before).group(1))
+                        self.assertEqual(int(idx[:-1]), base)  # renews the note before it
+        self.assertGreater(renewed, 10)
+
     def test_no_note_outlasts_what_its_instrument_can_sustain(self):
         from quintet import sustainable_frames
 
@@ -237,11 +294,27 @@ class TimeSeedTest(unittest.TestCase):
         out = Path(tempfile.mkdtemp())
         config = Config(argv=[], tempo=60, seeds="now", output_dir=out)
         before = time.time_ns() // 10**7
-        seeds = [config.seed_range()[0] for _ in range(5)]  # faster than the 10 ms tick: would collide
+        seeds = [next(iter(config.seed_range())) for _ in range(5)]  # faster than the 10 ms tick: would collide
         self.assertEqual(len(set(seeds)), 5)
         self.assertGreaterEqual(min(seeds), before)
         self.assertTrue(all(isinstance(s, int) for s in seeds))
         self.assertTrue(all((out / f"piece_{s}.wav").exists() for s in seeds))  # each claimed
+        Config(argv=[], tempo=60)
+
+    def test_count_claims_that_many_new_seeds_lazily(self):
+        import tempfile
+        from pathlib import Path
+
+        out = Path(tempfile.mkdtemp())
+        config = Config(argv=[], tempo=60, seeds="now", count=3, output_dir=out)
+        seeds = config.seed_range()
+        first = next(iter(seeds))
+        self.assertEqual(len(list(out.iterdir())), 1)  # only the first is claimed so far
+        rest = list(seeds)
+        self.assertEqual(len(rest), 2)
+        self.assertEqual(len({first, *rest}), 3)
+        with self.assertRaises(ValueError):
+            list(Config(argv=[], tempo=60, seeds="5-8", count=3).seed_range())
         Config(argv=[], tempo=60)
 
     def test_explicit_seeds_unchanged(self):
@@ -252,12 +325,34 @@ class TimeSeedTest(unittest.TestCase):
         Config(argv=[], tempo=60)
 
 
+class SpacingTest(unittest.TestCase):
+    def test_too_close(self):
+        self.assertTrue(too_close(60, 61))  # a minor 2nd at middle C: too close
+        self.assertFalse(too_close(72, 73))  # fine up at C5
+        self.assertFalse(too_close(60, 73))  # the same clash spread as a minor 9th from C4
+        self.assertTrue(too_close(40, 53))  # but a minor 9th that low is still muddy
+        self.assertTrue(too_close(50, 56))  # a tritone below C4
+        self.assertFalse(too_close(62, 68))
+        self.assertFalse(too_close(36, 43))  # a low 5th is fine
+        self.assertTrue(too_close(40, 44))  # a major 3rd below B-flat 2 is muddy
+        self.assertFalse(too_close(50, 50) or too_close(50, 62) or too_close(30, 60))
+
+    def test_generated_pieces_keep_clashes_rare(self):
+        for s in range(15):
+            config = Config(argv=[], tempo=60)
+            notes = resolve_notes("random", s)
+            v = generate(s, notes, config)
+            minutes = float(piece_beats(v.values())) / 60
+            self.assertLessEqual(len(clashes(v, notes, config)), int(CLASHES_PER_MINUTE * minutes), s)
+            self.assertEqual(parallels(v, notes, config), [])
+
+
 class TempoTest(unittest.TestCase):
     def test_random_per_seed(self):
         config = Config(argv=[], tempo=0)
         tempos = [config.piece_tempo(s) for s in range(200)]
         self.assertEqual(tempos[:10], [config.piece_tempo(s) for s in range(10)])
-        self.assertEqual((min(tempos), max(tempos)), (50, 70))
+        self.assertEqual((min(tempos), max(tempos)), (55, 75))
         self.assertTrue(all(t == int(t) for t in tempos))
         with self.assertRaises(ValueError):
             config.bpm()
@@ -275,6 +370,28 @@ class GenerateTest(unittest.TestCase):
         pieces = [generate(s, C.maj7s11) for s in range(1000, 1010)]
         self.assertGreater(len({repr(p) for p in pieces}), 5)
 
+    def test_leaves_space_between_phrases(self):
+        config = Config(argv=[], tempo=62)
+        sounding = []
+        for s in range(20):
+            for x in generate(s, C.lydian, config).values():
+                events = expand(x.pattern, x.span)
+                sounding.append(float(sum(e.beats for e in events if e.index is not None) / x.span))
+        self.assertLess(5 * sum(sounding) / len(sounding), 4.2)  # voices sounding at once, of 5
+
+    def test_every_note_lands_on_a_shared_eighth_note_pulse(self):
+        for s in range(20):
+            config = Config(argv=[], tempo=0)
+            config.tempo = config.piece_tempo(s)
+            for name, x in generate(s, resolve_notes("random", s), config).items():
+                self.assertEqual(x.drift, 0, (s, name))
+                self.assertEqual(len(x.pattern), x.beats, (s, name))  # one slot per beat
+                for e in expand(x.pattern, x.span):
+                    if isinstance(e.index, str) and e.index.endswith("="):
+                        continue  # a renewal carries on the same note seamlessly: no new attack
+                    self.assertEqual((e.start * 2).denominator, 1, (s, name, x.pattern))
+        Config(argv=[], tempo=60)
+
     def test_fits_max_seconds(self):
         config = Config(argv=[], tempo=60, max_seconds=120)
         for s in range(20):
@@ -282,8 +399,7 @@ class GenerateTest(unittest.TestCase):
             self.assertLessEqual(piece_beats(v.values()) * 60 / Fr(config.tempo), 120)
             self.assertEqual(set(v), set(QUINTET))
             self.assertGreaterEqual(len({x.span for x in v.values()}), 3)
-            self.assertTrue(all(x.dynamic in ("p", "mp", "mf") for x in v.values()))
-            self.assertIn(v["horn"].dynamic, ("p", "mp"))
+            self.assertTrue(all(x.dynamic in ("p", "mp") for x in v.values()))
 
     def test_loops_last_6_to_10_seconds_at_any_tempo(self):
         for tempo in (50, 60, 70):
@@ -309,7 +425,7 @@ class GenerateTest(unittest.TestCase):
                         runs.append(e.beats if e.index else 0)
                     last = e.index
                 longest[n] = max(runs)
-            self.assertGreaterEqual(sum(b >= Fr(5, 2) for b in longest.values()), 1, s)  # 3+ beats, less any drift
+            self.assertGreaterEqual(sum(b >= 3 for b in longest.values()), 1, s)  # 3+ beats
         Config(argv=[], tempo=60)
 
 

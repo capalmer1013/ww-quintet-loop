@@ -540,3 +540,209 @@ The standard-library constraint is dropped. See `2026-10-20-proper-project-desig
 
 The stdlib reverb (section 15) and mastering (section 26) are replaced. Generation is unchanged:
 `tests/test_generation_parity.py` checks that 20 seeds generate the same pieces as before the move.
+
+## 28. Long notes start quieter (added 2026-10-20)
+
+Long-note hairpins felt tame. Instead of boosting the peak (rejected: the loudest point was already
+loud enough), the rise is held back: the rising half of the sin² shape is raised to
+`HAIRPIN_RISE_POWER` = 3. The note is −26 dB at 10% and −11 dB at 20% (it used to be about −6 dB at
+10%), then reaches its full level at 40% as before. The peak and the fade are unchanged.
+
+## 29. Volume sines start at their quietest (added 2026-10-20)
+
+Generated voices use `lfo_phase = LFO_START_PHASE` = 0.5 instead of a random phase. Every voice's
+sine starts at its trough (−16 dB). Because each sine fits a whole number of times into the piece,
+it also ends there, so the piece opens softly and eases back down at the end without fading out,
+and the loop point matches. The voices still drift apart in between, because their periods differ.
+The random draw for the phase is gone, which changes later sine-period picks but no notes
+(checked on all 100 fixture voices). The fixture was re-recorded with the new `make fixtures`
+(`scripts/record_generation.py`).
+
+## 30. Modes and a soft spacing rule (added 2026-10-20)
+
+- **Why:** `sus9`, `maj69` and `min11` are all one pentatonic set, so about 38% of random pieces had
+  no semitones or tritones at all. Random harmony becomes whole modes:
+  `HARMONY_WEIGHTS = {lydian 3, dorian 3, mixolydian 2, major 2, minor 2, phrygian 1}` (no
+  locrian). Modes have no non-chord tones, so those figures don't occur; chords remain available
+  by name.
+- **Spacing rule:**
+  - `too_close(p, q)` applies `SPACING_FLOOR`, a low-interval-limit table per interval in
+    semitones: m2 C5, M2 G4, m3 C3, M3 B♭2, P4 A2, TT C4, P5 B♭1, m6 to m7 F2, M7 C3. Intervals
+    wider than an octave use the smaller form's limit minus 12; octaves, unisons and two octaves
+    or more are free.
+  - `clashes()` checks each note onset against the note every other voice is sounding at that
+    moment.
+- **Repair:** `_repair` minimises (parallels, clashes above `CLASHES_PER_MINUTE` × minutes)
+  lexicographically, with `REPAIR_STEPS` = 150. Per-voice timelines are cached and only the
+  nudged voice is rebuilt; the clash search uses float times.
+- **Result:** across 30 pieces, a median of 0 and a maximum of 1.36 clashes per minute. Close
+  2nds are rare (m2: 14 close against 473 spread), and tritones and M7s stay common where the
+  register allows.
+
+## 31. Legato phrasing (added 2026-10-20)
+
+Every note used to play its recording from the start, tongued attack and all, so everything sounded
+detached.
+
+- **Phrases** are maximal runs of note events without a rest, computed over the tiled piece with
+  wrap-around, so a phrase can span the loop point. Only a phrase's first note is articulated.
+- **Joins** inside a phrase (`voice_line` / `_note_audio`):
+  - **legato** (a new pitch): skip `max(LEGATO_SKIP_SECONDS = 60 ms, attack end)`, where attack end
+    is the first 10 ms frame within 4 dB of the recording's loudest. Equal-power crossfade of
+    `LEGATO_CROSSFADE_SECONDS` = 80 ms: the previous note renders 80 ms past its end, fading out.
+  - **repeat** (the same pitch written again): the previous note fades out over 40 ms; the new one
+    starts 30 ms in and rises over 80 ms. The start point is phase-aligned by normalised
+    cross-correlation (`ALIGN_WINDOW` and `ALIGN_SEARCH` = 1024 frames). Result: an 8–10 dB dip of
+    about 40 ms.
+  - **renew** (`"3="`, new notation, written by `_rearticulate` for holds a recording can't carry):
+    reuse the previous note's recording, start at `max(loop_bounds attack, attack end)`
+    phase-aligned, and use a linear crossfade of `RENEW_CROSSFADE_SECONDS` = 150 ms (amplitudes add
+    when aligned).
+- **Hairpins:** a long note's floor is `HAIRPIN_LEGATO_FLOOR_DB` = −9 on a joined side and −30 on a
+  phrase edge.
+- **Recording choice:** a note with a join after it requests `beats + RELEASE_SECONDS` of
+  recording, so it is still sustaining at the join.
+- **Measured across instruments:** legato within 0.2–3.5 dB of level through the join; repeats dip
+  8–10 dB; renewals within 0.5–2.9 dB.
+- **Fixture:** re-recorded; the only change is renewals written as `"k="`, which was checked on all
+  100 voices.
+
+## 32. Humanised performance (added 2026-10-20)
+
+To make it sound less robotic, `--humanize` (default on) varies the performance at render time;
+generation and piece-file contents don't change. Every stream is `np.random.default_rng(crc32(key))`,
+where the key is (instrument, pattern, beats, drift, dynamic, purpose). It is stable across runs, and
+it indexes events over the whole tiled piece, so the variation differs each time round within a
+piece but repeats with the loop.
+
+- **Timing:** onset = grid + `ENSEMBLE_MS[instrument]` (flute −6, oboe +4, clarinet 0, horn +10,
+  bassoon +6) + a normal(σ 10 ms) offset clipped to ±25 ms, in 2 ms steps. Each note ends where the
+  next event starts.
+- **Phrase ends:** a note followed by a rest is stretched by min(10% of the note, 0.2 s, half the
+  rest).
+- **Breaths** (`_breaths`): a phrase running past a uniform(4, 8) s target breathes at the next
+  change of note (not before a renewal). The gap is uniform(0.15, 0.3) s, capped at half the
+  previous note, taken off the previous note's end. That join becomes a phrase start (articulated).
+- **Takes:** `Instrument.takes()` lists note()'s pick plus other recordings of the same pitch and
+  dynamic at least as long. Each pitch rotates through them in order. Renewals keep the previous
+  recording.
+- **Level:** a normal(σ 0.5 dB) offset clipped to ±1 dB, in 0.25 dB steps, added to the accent.
+- **Loop wrapping:** `_add_looped` writes note audio round the loop point in either direction, any
+  number of times.
+
+## 33. Intonation, tempo range, flags in make help (added 2026-10-20)
+
+- **Intonation** (`--intonation`, default off): each note is retuned by a normal(σ 2 cents) offset,
+  clipped to ±4 cents in 0.5-cent steps. It is seeded (purpose "intonation") and varies per event
+  over the piece; a renewal copies its note's value. `retuned()` resamples with `np.interp` at
+  `2^(cents/1200)`. A test checks ±4 cents to within 0.3 cents with an FFT peak.
+- **Tempo:** `TEMPO_RANGE` becomes 55–75 bpm. The fixture was re-recorded, because tempos and the
+  cycle lengths derived from them change.
+- **Flags:** `make help` lists every quintet flag with its default. `tests/test_makefile.py` fails if
+  any `Config` field (or the `--no-` form of a boolean) is missing from it.
+
+## 34. Preset make targets and --count (added 2026-10-20)
+
+- **`--count N`** (default 1): with `--seeds now`, makes N pieces. `seed_range()` yields seeds
+  lazily: the first from the clock, then `claim_time_seed(after=previous)`, each claimed only when
+  reached, so an interrupted run leaves no unused claims. With an explicit `--seeds`, `--count` is
+  an error.
+- **Presets:** `batch N=10` (`--count $(N)`); `lush` (`--intonation --reverb 0.45 --room 0.9`); `daw`
+  (`--stems --code`); `raw` (`--no-humanize --no-master --reverb 0`). All append `$(ARGS)`, so
+  later flags override.
+- The user's own `loop` and `seam` targets (`scripts/loop.py`) were kept as they were.
+
+## 34. Concert pitch (added 2026-10-20)
+
+- **`--a4 HZ`** (default 440, the recordings' own pitch): every note is retuned by
+  `1200·log2(a4/440)` cents (−31.8 at 432), added to its intonation offset in `voice_line`. Tempo is
+  unchanged: each note is resampled before it is cut to length. At 440 the shift is 0 and nothing is resampled.
+
+## 35. Every instrument capped at mp again (added 2026-10-20)
+
+- `MAX_LAYERS` puts every instrument, not just the horn, at `mp`, as `MAX_LAYER` did before §18.
+  The `mf` recordings sounded too bright against the soft quintet.
+- Generated dynamics follow the cap, so every voice is now `p` or `mp`.
+- Explicit louder dynamics still work: they level the `mp` (or softer) recording up with gain.
+- `Instrument.playable` shrinks to pitches recorded at `mp` or softer.
+
+## 36. A quieter, lower oboe (added 2026-10-20)
+
+- `INSTRUMENT_TRIM_DB["oboe"]` is −3 dB, so it sits behind the others instead of on top.
+- `SWEET["oboe"]` tops out at Cs6 instead of D6, away from the piercing top. A5 or C6 would be
+  better, but the oboe has few `mp`-or-softer recordings around C5–Ds5 (and none of C6's
+  neighbours below Cs6 help), so some chords would leave it fewer than three notes.
+
+## 37. Intonation on by default (added 2026-10-20)
+
+- `--intonation` defaults to on; `--no-intonation` turns it off.
+- `make lush` no longer passes `--intonation`; `make raw` adds `--no-intonation`.
+
+## 38. Space after long tones (added 2026-10-20)
+
+- With `--humanize`, a tone held `SUSTAIN_MIN_BEATS` (3) beats or more, counting its renewals, that
+  runs straight into another note ends `PHRASE_GAP_SECONDS` (0.3–0.6 s, seeded) early, capped at
+  half its last event. The next note is re-articulated, as after a breath.
+- It goes through `_breaths`, so it repeats with the piece and also covers the loop point.
+- A long tone that already ends on a rest is unchanged (the rest is the pause).
+
+## 39. More space in generated lines (added 2026-10-20)
+
+Before this, about 4.6 of the 5 voices sounded at any moment (each 85–95% of the time): a wall of
+notes. Now about 3.7 do.
+
+- `P_CELL_END_REST` (0.7): a moving line's phrase cell of 3+ slots ends on a rest.
+- `P_SILENT_CELL` (0.25): a cell after the first is a single rest, so the voice sits out a phrase.
+- Sustaining voices: `P_SUSTAIN_REST` rises from 0.3 to 0.6 and the closing rest is
+  `SUSTAIN_REST_BEATS` (1–2) beats, as long as two sustained notes still fit.
+- A test keeps the average below 4.2 voices at once (seeds 0–19, C lydian, 62 bpm).
+
+## 40. A staged room: depth, reflections, a convolution hall, air and warmth (added 2026-10-20)
+
+- **`--reverb` defaults to 0.5** (was 0.3); `make lush` uses 0.7 so it stays the wetter preset.
+- **Stage depth** (`STAGE_DEPTH` in `render.py`): flute and oboe 0, clarinet 0.4, bassoon 0.6,
+  horn 1. `effects.place` delays a voice by up to `DEPTH_DELAY_MS` (6 ms) and darkens it with a
+  4 kHz high shelf of up to −4 dB; `send_gain` sends up to 4 dB more of it to the hall.
+- **Horn +1.5 dB** (`INSTRUMENT_TRIM_DB`), so it carries from the back.
+- **Early reflections** (`effects.reflections`): five taps at 9–38 ms, −14 to −21 dB, alternating
+  walls, skewed by pan and squeezed by depth, lowpassed at 6 kHz as one bus. Part of the room:
+  only with `--reverb` above 0.
+- **`mix` returns `(dry, early, send)`**, and `finish(dry, config, early, send)` adds the room.
+- **Convolution hall** (`effects.impulse_response`), replacing pedalboard's `Reverb`: octave-band
+  noise, each band decaying at `HALL_DECAY_RATIO` times an RT60 of 0.6–3.1 s from `--room`, with a
+  12 ms onset. `--reverb-ir` loads a recorded impulse response instead (resampled, mono doubled).
+  Either is high-passed at 250 Hz and low-passed at 7 kHz (12 dB/octave), pre-delayed 25 ms and
+  scaled to unit energy per channel. Each side of the hall hears half of the other
+  (`REVERB_CROSSFEED`).
+- **Circular convolution** by FFT (a 5-smooth length), so the tail wraps over the loop point
+  exactly; a hall longer than the piece is folded onto it. About 1.5–3.5 s for a 150–340 s piece.
+- **`REVERB_WET_SCALE` 0.2:** on seeds 7, 12 and 31 an amount's wet-to-dry loudness is within
+  about 2 LU of the old hall's.
+- **Mastering:** a +1.5 dB high shelf at 10 kHz joins the EQ, then `--saturation` (default 0.3)
+  applies `tanh(d·x)/d` with `d = 3 × amount`, before the compressor. Piece files record
+  `saturation` (and `reverb_ir` when set).
+
+## 41. One shared eighth-note pulse (added 2026-10-20)
+
+Before this, only 57% of generated onsets fell on an eighth-note grid: each cycle was split into
+equal (often fractional) phrase cells, each cut into 2–6 slots at random, giving notes every 0.8,
+1.25 or 1.75 beats, plus triplet figures and `[b, n, b]` neighbours. Nothing shared a pulse, and
+pieces sounded like random notes. Now 100% do.
+
+- **`_pattern` writes one slot per beat** (`len(pattern) == beats`), so phasing comes only from
+  cycle lengths. Phrase cells are whole beats drawn from `Profile.beats`, at least two per cycle,
+  with no cell shorter than the profile's minimum (the last absorbs the remainder). A silent cell
+  is `[0, _, ...]`.
+- **`_cell(walk, size, first)`:** each beat is a hold, rest, figure or note by the profile's
+  per-beat `hold`, `rest` and `split`. `Profile.slots` is gone. A closing rest
+  (`P_CELL_END_REST`) is reserved before filling, so a neighbour or passing tone is never cut off
+  before it resolves.
+- **Figures are eighths** (`_eighths`): pairs per beat, an odd last note taking the whole beat,
+  capped by `_Walk.figure(most)` to the cell's room.
+- **Neighbours** are `[b, n]` then `b` on the next beat; **passing tones** stay `[a, passing]`.
+- **No drift in generation:** `DRIFT_CHANCE`, `DRIFTS` and `MAX_DRIFTING` are gone. `Voice.drift`
+  and `voice(..., drift=k)` stay for hand-written pieces.
+- **Renewals** (`"k="`) may still split a beat finer when a recording can't hold a note, but they
+  carry on the same note seamlessly, with no new attack, so they don't affect rhythm.
+- Density is about the same: 3.72 voices sounding at once (was 3.75), 0.4–0.7 onsets per beat
+  per instrument. The generation fixture is re-recorded.

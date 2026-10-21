@@ -117,7 +117,9 @@ class HarmonyTest(unittest.TestCase):
         self.assertEqual(len({p.root for p in picks}), 12)
         qualities = Counter(p.quality for p in picks)
         self.assertEqual(set(qualities), set(HARMONY_WEIGHTS))
-        self.assertGreater(qualities["maj9"], qualities["dom7s11"])  # leans consonant
+        self.assertGreater(qualities["lydian"], qualities["phrygian"])  # leans warm
+        self.assertNotIn("locrian", qualities)
+        self.assertTrue(all(len(p.pitch_classes) == 7 for p in picks))  # whole modes
 
     def test_resolve_random_chord_on_a_root(self):
         picks = {resolve_notes("D.random", s) for s in range(50)}

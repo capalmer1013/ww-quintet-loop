@@ -9,7 +9,9 @@ from fractions import Fraction
 
 __all__ = ["_", "Event", "expand", "tile", "event_paths", "leaves", "accents", "STEP", "ACCENT_DB"]
 
-STEP = re.compile(r"([1-9][0-9]*)([+-])")  # "3+": palette note 3, one scale step up
+# "3+" / "3-": palette note 3, one scale step up / down; "3=": note 3 again, renewed seamlessly
+# (written by generation where a held note outlasts its recording)
+STEP = re.compile(r"([1-9][0-9]*)([+=-])")
 # metric accent (dB) by level within a group: its first slot, the group start nearest the middle,
 # other group starts, everything else. Each level of nesting counts half as much as the one above.
 ACCENT_DB = (1.0, 0.6, 0.3, 0.0)
@@ -70,7 +72,7 @@ def _walk(node, start: Fraction, span: Fraction, path: str, leaves: list) -> Non
     elif node is _ or (type(node) is int and node >= 0) or (type(node) is str and STEP.fullmatch(node)):
         leaves.append((start, span, node))
     else:
-        raise ValueError(f'{path}: {node!r} is not a pattern element (int >= 0, "3+"/"3-", _, or list)')
+        raise ValueError(f'{path}: {node!r} is not a pattern element (int >= 0, "3+"/"3-"/"3=", _, or list)')
 
 
 def event_paths(pattern: list) -> list[tuple[int, ...] | None]:

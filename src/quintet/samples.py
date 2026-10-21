@@ -14,9 +14,9 @@ from .config import Config
 QUINTET = ("flute", "oboe", "clarinet", "horn", "bassoon")
 SAMPLE_RATE = 44100  # every sample in the library is 44.1 kHz, 16-bit, mono
 DYNAMICS = ["pp", "p", "mp", "mf", "f", "ff"]  # softest to loudest
-# loudest recorded dynamic each instrument plays (louder levels come from gain); the horn stays soft
-# so it blends rather than turning brassy
-MAX_LAYERS = {"flute": "mf", "oboe": "mf", "clarinet": "mf", "bassoon": "mf", "horn": "mp"}
+# loudest recorded dynamic each instrument plays (louder levels come from gain); everyone stays at mp
+# so the quintet blends rather than turning bright or brassy
+MAX_LAYERS = {"flute": "mp", "oboe": "mp", "clarinet": "mp", "bassoon": "mp", "horn": "mp"}
 NOTE_NAMES = ["C", "Cs", "D", "Ds", "E", "F", "Fs", "G", "Gs", "A", "As", "B"]
 # Nominal seconds for each recorded length; used to pick a sample for a duration.
 LENGTH_SECONDS = {"0.25s": 0.25, "0.5s": 0.5, "1s": 1.0, "1.5s": 1.5, "long": 3.0, "very-long": 15.0, "phrase": 0.0}
@@ -179,6 +179,18 @@ class Instrument:
                 return covering[0]
         rank = {d: i for i, (d, _m) in enumerate(by_dynamic)}
         return max((s for _d, matches in by_dynamic for s in matches), key=lambda s: (s.seconds, -rank[s.dynamic]))
+
+    def takes(self, note: str, dynamic: str, seconds: float, max_dynamic: str = "ff") -> list[Sample]:
+        """Every recording that would do for this note, so repeats can rotate between performances:
+        note()'s pick plus any other recording of the same pitch and dynamic that is at least as able
+        to cover `seconds`. Always starts with note()'s pick; the rest are in a fixed order."""
+        best = self.note(note, dynamic, seconds, max_dynamic=max_dynamic)
+        enough = min(seconds, best.seconds)
+        others = sorted(
+            (s for s in self.find(note, best.dynamic) if s is not best and s.seconds >= enough),
+            key=lambda s: s.path.name,
+        )
+        return [best, *others]
 
 
 _instruments: dict[tuple[Path, str], Instrument] = {}
