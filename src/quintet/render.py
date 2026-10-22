@@ -13,7 +13,7 @@ import numpy as np
 from pedalboard.io import AudioFile
 
 from .config import Config
-from .effects import finish, place, reflections, send_gain
+from .effects import finish, place, reflections, send_gain, voice_tone
 from .pattern import accents, expand, tile
 from .samples import (
     CROSSFADE_SECONDS,
@@ -66,11 +66,15 @@ REPEAT_OUT_SECONDS, REPEAT_IN_DELAY_SECONDS, REPEAT_IN_SECONDS = 0.04, 0.03, 0.0
 ALIGN_WINDOW, ALIGN_SEARCH = 1024, 1024  # frames: same-pitch joins are phase-aligned by cross-correlation
 RENEW_CROSSFADE_SECONDS = 0.15  # a renewed note ("3=") joins its recording's steady middle seamlessly
 # levelling: the library's recording levels differ by up to ~14 dB between instruments, so every
-# sample is scaled so its loudest LEVEL_WINDOW_SECONDS hit LEVEL_REF_DB + DYNAMIC_DB[dynamic] (RMS)
-LEVEL_REF_DB = -24.0  # mf
+# sample is scaled so its loudest LEVEL_WINDOW_SECONDS hit LEVEL_REF_DB + DYNAMIC_DB[dynamic] (RMS).
+# The reference sits low enough that levelling only ever turns a recording down, even at ff with the
+# biggest metric accent and level variation on top (the quietest flute recordings set it, with about
+# 1 dB to spare); mastering brings the mix up to its loudness afterwards
+LEVEL_REF_DB = -61.0  # mf
 LEVEL_WINDOW_SECONDS = 0.3
 DYNAMIC_DB = {"pp": -12.0, "p": -8.0, "mp": -4.0, "mf": 0.0, "f": 3.0, "ff": 6.0}
-INSTRUMENT_TRIM_DB = {"flute": 0.0, "oboe": -3.0, "clarinet": 0.0, "horn": 1.5, "bassoon": 0.0}
+# by ear, as cuts: the oboe well down so it doesn't stick out, the horn a little so it carries without dominating
+INSTRUMENT_TRIM_DB = {"flute": -1.5, "oboe": -6.0, "clarinet": -1.5, "horn": -2.0, "bassoon": -1.5}
 # mild, fixed seating (-1 left .. +1 right): the high voices apart, horn and bassoon near the middle
 PAN = {"flute": -0.35, "clarinet": -0.2, "bassoon": -0.05, "horn": 0.1, "oboe": 0.35}
 # ...and how far back each sits (0 = front row .. 1 = back): flute and oboe in front, the horn at the
@@ -481,17 +485,21 @@ def mix(lines: dict[str, np.ndarray], voices: dict[str, Voice]) -> tuple[np.ndar
     return dry, early, send
 
 
-def write_wav(path: Path, audio: np.ndarray) -> Path:
-    """Write mono (frames,) or stereo (2, frames) float audio as 16-bit WAV at SAMPLE_RATE."""
+def write_wav(path: Path, audio: np.ndarray, floating: bool = False) -> Path:
+    """Write mono (frames,) or stereo (2, frames) float audio as a WAV at SAMPLE_RATE: 16-bit, or
+    with `floating` 32-bit float, for unmastered audio that sits far below full scale (levelling
+    only cuts) and would lose its quiet detail in 16 bits."""
     path.parent.mkdir(parents=True, exist_ok=True)
     audio = np.atleast_2d(audio).astype(np.float32)
-    with AudioFile(str(path), "w", samplerate=SAMPLE_RATE, num_channels=audio.shape[0], bit_depth=16) as f:
+    depth = 32 if floating else 16
+    with AudioFile(str(path), "w", samplerate=SAMPLE_RATE, num_channels=audio.shape[0], bit_depth=depth) as f:
         f.write(audio)
     return path
 
 
 def render(name: str, notes: PitchSet, **voices: Voice) -> list[Path]:
-    """Write <name>.wav (and stems if config.stems) for the five quintet voices."""
+    """Write <name>.wav (and stems if config.stems) for the five quintet voices. The mastered mix is
+    16-bit; stems and an unmastered (--no-master) mix are 32-bit float."""
     if set(voices) != set(QUINTET):
         missing, unknown = set(QUINTET) - set(voices), set(voices) - set(QUINTET)
         raise ValueError(f"render needs exactly {QUINTET}; missing {sorted(missing)}, unknown {sorted(unknown)}")
@@ -503,13 +511,15 @@ def render(name: str, notes: PitchSet, **voices: Voice) -> list[Path]:
         )
         for n in QUINTET
     }
+    lines = {n: voice_tone(line, n) for n, line in lines.items()}  # stems get each instrument's tone too
     out = config.output_dir
     dry, early, send = mix(lines, voices)
-    paths = [write_wav(out / f"{name}.wav", finish(dry, config, early, send))]
+    paths = [write_wav(out / f"{name}.wav", finish(dry, config, early, send), floating=not config.master)]
     if config.stems:  # dry and unmastered, with the volume sine
         for n in QUINTET:
             curve = lfo_curve(voices[n], len(lines[n]))
-            paths.append(write_wav(out / f"{name}_{n}.wav", lines[n] if curve is None else lines[n] * curve))
+            stem = lines[n] if curve is None else lines[n] * curve
+            paths.append(write_wav(out / f"{name}_{n}.wav", stem, floating=True))
     return paths
 
 

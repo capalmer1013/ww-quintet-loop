@@ -70,6 +70,9 @@ QUALITIES = {
     "min69": (0, 2, 3, 7, 9),
     "dom9": (0, 2, 4, 7, 10),
     "dom7s11": (0, 4, 6, 7, 10),
+    # quartal: stacked 4ths (a chain of 5ths), no 3rd anchoring the key
+    "quartal": (0, 2, 5, 7, 10),  # Bb F C G D: the root mid-stack, suspended
+    "quartal_bright": (0, 2, 4, 7, 9),  # C G D A E: the root at the bottom, open and bright
     # scales
     "major": (0, 2, 4, 5, 7, 9, 11),
     "minor": (0, 2, 3, 5, 7, 8, 10),
@@ -86,8 +89,8 @@ QUALITIES = {
 }
 
 
-# Core tones (root, 3rd or sus, 5th, 7th or 6th) of chords with colour notes; every other chord's
-# tones are all core, and a scale's core is its triad.
+# Core tones (root, 3rd or sus, 5th, 7th or 6th) of chords with colour notes, or a quartal set's
+# 3rd-free stack; every other chord's tones are all core, and a scale's core is its triad.
 CORES = {
     "maj7s11": (0, 4, 7, 11),
     "maj9": (0, 4, 7, 11),
@@ -98,6 +101,9 @@ CORES = {
     "min69": (0, 3, 7, 9),
     "dom9": (0, 4, 7, 10),
     "dom7s11": (0, 4, 7, 10),
+    # quartal sets: the low voices keep to the stack's 4ths and 5ths, never a 3rd
+    "quartal": (0, 2, 5, 7),
+    "quartal_bright": (0, 2, 7, 9),
 }
 SCALES = {
     "major",
@@ -135,11 +141,21 @@ PARENT_SCALES = {
     "m7b5": "locrian",
     "dim7": "harmonic_minor",
     "aug": "whole_tone",
+    "quartal": "mixolydian",
+    "quartal_bright": "lydian",
 }
 
-# Random harmony: whole 7-note modes, weighted towards the warmer ones (locrian never). Colour comes
-# from where voices sit, not from crowding: see the spacing rule in voice.py.
-HARMONY_WEIGHTS = {"lydian": 3, "dorian": 3, "mixolydian": 2, "major": 2, "minor": 2, "phrygian": 1}
+# Random harmony: lydian most, quartal sets for ambiguity, then the other bright modes; dorian is
+# the only minor-3rd one (minor, phrygian and locrian never). Colour comes from where voices sit,
+# not from crowding: see the spacing rule in voice.py.
+HARMONY_WEIGHTS = {
+    "lydian": 4,
+    "quartal": 2,
+    "quartal_bright": 2,
+    "mixolydian": 1.5,
+    "dorian": 1.5,
+    "major": 1,
+}
 
 
 class PitchClass(int):

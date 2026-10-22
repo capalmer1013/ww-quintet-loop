@@ -58,9 +58,9 @@ For example, `make lush ARGS="--count 5"` makes five lush pieces.
 | `--a4 HZ` | 440 | Concert pitch. The samples are recorded at A440, so the default plays them as recorded; `--a4 432` plays everything about 32 cents flat |
 | `--master` / `--no-master` | on | Phone-friendly EQ, compression and −16 LUFS loudness (see Mastering) |
 | `--saturation` | `0.3` | Gentle tape-style warmth when mastering (`0` = clean) |
-| `--max-seconds` | `360` | Longest allowed piece (one full phase cycle) |
+| `--max-seconds` | `480` | Longest allowed piece (one full phase cycle) |
 | `--output-dir` | `out` | Where files are written |
-| `--stems` | off | Also write `piece_<seed>_<instrument>.wav` (mono) for each voice |
+| `--stems` | off | Also write `piece_<seed>_<instrument>.wav` (mono, 32-bit float, dry and unmastered) for each voice |
 | `--code` | off | Also write `piece_<seed>.py`, which reproduces the piece |
 | `--sample-root` | `samples/` | Sample library location |
 
@@ -115,6 +115,9 @@ render('piece_2000', C.lydian,
     instrument goes up to `mp`, so the quintet blends instead of turning bright or brassy. A louder
     dynamic is reached by levelling (gain), keeping the softer tone.
   - A note without that recording falls back to the nearest softer one.
+  - **Gap fill** (`GAP_FILL`): the oboe has nothing at or below `mp` for C5–D♯5, and the horn for
+    C♯5–F5, both inside their sweet ranges. Those notes borrow the nearest louder recording (oboe
+    `mf`, horn `ff`), levelled down to the dynamic played, instead of going unplayed.
 - **Volume sine:** `lfo=k` makes the voice's volume ebb and flow on a slow sine, `k` cycles over the
   whole piece, starting at `lfo_phase` (0 = loudest).
   - It swings 12 dB, from −4 dB at its loudest down to −16 dB, so a voice at its quietest is a
@@ -214,8 +217,11 @@ Each voice also sits at a depth on the stage (`STAGE_DEPTH`, 0 = front row, 1 = 
 
 - **Further back is later, darker and wetter:** up to 6 ms later (about 2 m), a high shelf of up
   to −4 dB above 4 kHz, and up to 4 dB more sent to the hall.
-- **The horn is at the back**, as its bell faces away from the audience. Its level is trimmed up
-  1.5 dB (`INSTRUMENT_TRIM_DB`) so it still carries.
+- **The horn is at the back**, as its bell faces away from the audience. It's trimmed only 2 dB
+  (`INSTRUMENT_TRIM_DB`), so it still carries without dominating.
+- **The oboe is darkened** (`VOICE_EQ` in `src/quintet/effects.py`), so its nasal, reedy tone
+  doesn't poke through the blend: −3 dB at 1.2 kHz and at 3 kHz (the latter offsetting mastering's
+  presence boost) and a −3 dB high shelf from 6 kHz. Its stem is darkened too.
 - **Early reflections:** five quiet echoes per voice off alternating side walls, 9–38 ms after the
   direct sound and darkened above 6 kHz. A voice panned towards a wall hears it sooner, and one
   further back hears them closer together. They are part of the room, so `--reverb 0` drops them.
@@ -274,23 +280,27 @@ The staged mix is convolved with a hall, in `src/quintet/effects.py`:
 
 ## Harmony
 
-With `--notes random`, each seed picks a key (all 12) and a whole 7-note mode, weighted towards
-the warmer ones:
+With `--notes random`, each seed picks a key (all 12) and a harmony: mostly lydian, then quartal
+sets for tonal ambiguity, then the other bright modes. Dorian is the only one with a minor 3rd.
 
-| Mode | On C | Weight |
+| Harmony | On C | Weight |
 |---|---|---|
-| `lydian` | C D E F♯ G A B | 3 |
-| `dorian` | C D E♭ F G A B♭ | 3 |
-| `mixolydian` | C D E F G A B♭ | 2 |
-| `major` | C D E F G A B | 2 |
-| `minor` | C D E♭ F G A♭ B♭ | 2 |
-| `phrygian` | C D♭ E♭ F G A♭ B♭ | 1 |
+| `lydian` | C D E F♯ G A B | 4 |
+| `quartal` | C D F G B♭: the 4ths stack B♭–F–C–G–D, root mid-stack (suspended) | 2 |
+| `quartal_bright` | C D E G A: the 4ths stack C–G–D–A–E, root at the bottom (open, bright) | 2 |
+| `mixolydian` | C D E F G A B♭ | 1.5 |
+| `dorian` | C D E♭ F G A B♭ | 1.5 |
+| `major` | C D E F G A B | 1 |
 
-- **Voicing:** the bassoon plays the mode's root and 5th, the horn its triad, and the clarinet,
-  oboe and flute all seven notes.
+- **Voicing:** the bassoon plays the root and 5th. In a mode the horn plays its triad and the
+  clarinet, oboe and flute all seven notes.
+- **Quartal voicing:** in a quartal set the horn keeps to the stack's 4ths and 5ths, never a 3rd
+  (root, 2nd, 4th, 5th in `quartal`; root, 2nd, 5th, 6th in `quartal_bright`). The 3rd of
+  `quartal_bright` only appears up top, as colour. Passing and neighbour notes come from
+  mixolydian and lydian respectively, so `quartal_bright` picks up an occasional F♯.
 - **Colour from spacing, not crowding:** see the spacing rule below.
-- **Chords are still available:** e.g. `--notes C.maj9`, `--notes Fs.maj7s11`, or `--notes D.lydian`
-  for a fixed mode.
+- **Fixed harmonies:** e.g. `--notes D.quartal`, `--notes D.lydian`, or a chord like
+  `--notes C.maj9` or `--notes Fs.maj7s11`. Minor and phrygian are still there by name.
 - **Separate streams:** the harmony and the tempo each come from their own random stream for the
   seed. Fixing one (e.g. `--tempo 60`) doesn't change what the seed picks for the other.
 - **Weights:** `HARMONY_WEIGHTS` in `src/quintet/theory.py` sets them.
@@ -400,7 +410,7 @@ The constants are at the top of `src/quintet/voice.py`.
   a rest (70%), and a voice sometimes sits out a whole cell (25% of cells after the first), so the
   texture has space instead of all five playing at once. On average about 3.7 of the 5 voices sound
   at any moment.
-- **Loop length:** every voice's loop lasts 6–10 s (a whole number of beats) at the piece's tempo,
+- **Loop length:** every voice's loop lasts 8–13 s (a whole number of beats) at the piece's tempo,
   strung from phrase cells of whole beats (each about the instrument's own cell length). That's long enough not to feel repetitive, short
   enough to hear each loop come round.
 
@@ -424,7 +434,7 @@ On top of that:
 
 It redraws, deterministically for that seed, until the piece fits `--max-seconds` and has at least
 3 different loop lengths, so the voices genuinely phase. Nearby loop lengths (say 7 against 8 s)
-slide past each other slowly, Reich-style. Pieces run about 1–6 minutes (median about 4).
+slide past each other slowly, Reich-style. Pieces run about 1–8 minutes (median about 5.5).
 
 ## Theory helpers
 
@@ -458,9 +468,17 @@ samples/<instrument>/extended/<technique>/<instrument>_<note>_<technique>_<dynam
 - Not every instrument has every dynamic; for example, the clarinet has no `mf` or `mp`.
 - **Levelling:** the recordings' levels differ by up to about 14 dB between instruments, so every
   sample is scaled until its loudest 0.3 s reaches a target for the dynamic it's playing:
-  `mf` = −24 dBFS RMS, `pp` −12 dB, `p` −8 dB, `mp` −4 dB, `f` +3 dB, `ff` +6 dB.
-  `INSTRUMENT_TRIM_DB` in `src/quintet/render.py` adjusts each instrument by ear; the oboe sits 3 dB
-  down so it doesn't stick out.
+  `mf` = −61 dBFS RMS, `pp` −12 dB, `p` −8 dB, `mp` −4 dB, `f` +3 dB, `ff` +6 dB.
+- **Only ever turned down:** that reference is set low enough that no recording is ever boosted,
+  even at `ff` with the biggest metric accent and level variation on top (a test checks every
+  recording). The quietest flute recordings set it, with about 1 dB to spare. Mastering brings the
+  finished mix up to −16 LUFS.
+- **Trims are cuts:** `INSTRUMENT_TRIM_DB` in `src/quintet/render.py` adjusts each instrument by
+  ear: the oboe 6 dB down so it doesn't stick out, the horn 2 dB down so it carries from the back
+  of the stage without dominating, and the flute, clarinet and bassoon 1.5 dB down.
+- **Unmastered files are 32-bit float:** stems and `--no-master` mixes sit far below full scale, so
+  they're written as float WAVs that keep every bit of detail. Turn them up where you play or mix
+  them. The mastered mix is 16-bit.
 
 ## Development
 

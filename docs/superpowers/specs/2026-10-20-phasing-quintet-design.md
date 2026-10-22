@@ -746,3 +746,50 @@ pieces sounded like random notes. Now 100% do.
   carry on the same note seamlessly, with no new attack, so they don't affect rhythm.
 - Density is about the same: 3.72 voices sounding at once (was 3.75), 0.4–0.7 onsets per beat
   per instrument. The generation fixture is re-recorded.
+
+## 42. Longer loops again, an 8-minute cap (added 2026-10-21)
+
+- **Why:** with every voice on one pulse (section 41) the patterns are clear, and 6–10 s loops
+  came round too soon.
+- **Change:** `CYCLE_SECONDS` = 8–13 s and `--max-seconds` defaults to 480 (was 360).
+- **Why the cap moved:** with whole-beat loops and no drift, three different loop lengths of
+  8–13 s can't all realign within 360 s at some tempos (55, 61–65, 68, 69 bpm). The old 10–16 s
+  would need about 600 s.
+- **Result:** over 60 seeds every tempo fits; pieces run 0.8–8 min, median about 5.5.
+- **Oboe −4.5 dB** (`INSTRUMENT_TRIM_DB`, was −3): with clearer lines it still stuck out.
+
+## 43. Cut-only levelling (added 2026-10-21)
+
+- **Why:** levelling boosted most recordings to reach its target: flute by a median 12.5 dB (up to
+  24.7), horn 10 (up to 18), some oboe and bassoon ones up to about 14. Samples should only ever be
+  turned down.
+- **`LEVEL_REF_DB` = −61** (was −24): with `ff`, the biggest metric accent (`2 × ACCENT_DB[0]`, a
+  bound on the nested sum) and `LEVEL_LIMIT_DB` on top, every usable recording's gain is at most
+  0 dB; the quietest flute recordings need −60.2, so about 1 dB is spare. A test checks every
+  recording.
+- **`INSTRUMENT_TRIM_DB` rebased to cuts**, same balance: horn 0, flute, clarinet and bassoon −1.5,
+  oboe −6.
+- **`master()` scales the mix to full-scale peak first**, so pyloudnorm's absolute gate (−70 LUFS)
+  still hears its quiet passages. Seed 7 at 64 bpm masters identically: −15.98 LUFS and −5.22 dBFS
+  peak before and after, the difference 88 dB down (16-bit rounding).
+- **Stems and `--no-master` mixes are written as 32-bit float** (`write_wav(..., floating=True)`):
+  they now peak around −60 dBFS, which 16 bits would coarsen. The mastered mix stays 16-bit.
+
+## 44. Quartal harmony, fewer minor modes (added 2026-10-21)
+
+- **Why:** the minor modes (46% of random picks) and the horn spelling out each mode's triad
+  sounded too much like textbook Western harmony. Lydian stays the favourite; the variation
+  should come from tonal ambiguity.
+- **`HARMONY_WEIGHTS`:** lydian 4, `quartal` 2, `quartal_bright` 2, mixolydian 1.5, dorian 1.5,
+  major 1. Minor and phrygian leave the random menu (still usable by name). A minor 3rd now
+  appears in about 12% of picks.
+- **Quartal sets** (`QUALITIES`): chains of perfect 5ths, i.e. stacked 4ths. `quartal` (0, 2, 5,
+  7, 10) has the root mid-stack; `quartal_bright` (0, 2, 4, 7, 9) has it at the bottom.
+- **Their voicing** (`CORES`): the horn's core is the 3rd-free stack, (0, 2, 5, 7) and (0, 2, 7,
+  9); the bassoon keeps root and 5th; modes keep the horn on their triad. Parent scales
+  (`PARENT_SCALES`): mixolydian and lydian.
+- **Tests:** random picks never include minor, phrygian or locrian and keep minor 3rds under 20%;
+  both sets are unbroken chains of 5ths with no 3rd in their core; on every root the horn's and
+  bassoon's palettes for a quartal set hold no 3rd. The generation fixture is re-recorded.
+- `LfoTest.test_generated_sines_are_slow_and_out_of_step` now passes its own 60 bpm config, so it
+  no longer depends on which test ran before it.

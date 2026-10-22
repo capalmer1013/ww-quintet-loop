@@ -27,7 +27,17 @@ from quintet import (
     voice,
     voice_line,
 )
-from quintet.render import ATTACK_BEATS, INSTRUMENT_TRIM_DB, PAN, STAGE_DEPTH
+from quintet.pattern import ACCENT_DB
+from quintet.render import (
+    ATTACK_BEATS,
+    DYNAMIC_DB,
+    INSTRUMENT_TRIM_DB,
+    LEVEL_LIMIT_DB,
+    LEVEL_REF_DB,
+    PAN,
+    STAGE_DEPTH,
+)
+from quintet.samples import DYNAMICS
 from quintet.voice import LFO_PEAK_DB
 
 # 4 beats at 240 bpm = 1 s
@@ -127,13 +137,24 @@ class RenderTest(unittest.TestCase):
         self.assertGreater(chosen.seconds, 0.39)  # not the 0.39 s "0.5s" file piece_8 used
 
     def test_instruments_are_level_matched(self):
-        for dyn, target in (("p", -32), ("mf", -24), ("f", -21)):
+        for dyn in ("p", "mf", "f"):
             for name in ("flute", "oboe", "clarinet", "horn", "bassoon"):
                 inst = instrument(name)
                 for m in palette(C.lydian, inst):
                     sample = inst.note(midi_to_note(m), dyn, 1.0)
-                    level = target + INSTRUMENT_TRIM_DB[name]
+                    level = LEVEL_REF_DB + DYNAMIC_DB[dyn] + INSTRUMENT_TRIM_DB[name]
                     self.assertAlmostEqual(loudness_db(leveled(sample, dyn)), level, delta=0.5, msg=(name, m, dyn))
+
+    def test_levelling_only_ever_turns_a_recording_down(self):
+        # the loudest a note can be asked for: ff, the biggest metric accent (each level of nesting
+        # adds half the one above, so under 2x the top) and the most humanize adds
+        most = DYNAMIC_DB["ff"] + 2 * ACCENT_DB[0] + LEVEL_LIMIT_DB
+        for name in ("flute", "oboe", "clarinet", "horn", "bassoon"):
+            inst = instrument(name)
+            usable = DYNAMICS[: DYNAMICS.index(inst.max_layer) + 1]
+            for sample in (s for s in inst.notes if s.dynamic in usable or s.midi in inst.gap_filled):
+                gain = LEVEL_REF_DB + most + INSTRUMENT_TRIM_DB[name] - loudness_db(sample.load())
+                self.assertLessEqual(gain, 0, (name, sample.path.name))
 
     def test_layers_capped_at_mp(self):
         for name in ("flute", "oboe", "clarinet", "horn", "bassoon"):
@@ -141,10 +162,31 @@ class RenderTest(unittest.TestCase):
             with mock.patch.object(inst, "note", wraps=inst.note) as note:
                 for dyn in ("p", "mp", "mf", "ff"):
                     voice_line(inst, voice([1, 0, [2, 0], 4, 0], beats=2, dynamic=dyn), C.lydian, 2, 60)
-            used = {inst.note(*c.args, **c.kwargs).dynamic for c in note.call_args_list}
+            picks = [inst.note(*c.args, **c.kwargs) for c in note.call_args_list]
+            # louder only where a gap-filled pitch has no soft recording at all
+            used = {s.dynamic for s in picks if s.midi not in inst.gap_filled}
             self.assertTrue(used <= {"pp", "p", "mp"}, (name, used))
             if "mp" in inst.dynamics:
                 self.assertIn("mp", used)
+
+    def test_gap_filled_pitches_borrow_the_nearest_louder_layer_at_the_soft_level(self):
+        # the horn's gap was only ever recorded at ff
+        for name, gap, layer in (
+            ("oboe", ("C5", "Cs5", "D5", "Ds5"), "mf"),
+            ("horn", ("Cs5", "Ds5", "E5", "F5"), "ff"),
+        ):
+            inst = instrument(name)
+            self.assertEqual({midi_to_note(m) for m in inst.gap_filled}, set(gap))
+            self.assertTrue(inst.gap_filled <= inst.playable)
+            for note in gap:
+                sample = inst.note(note, "p", 1.0, max_dynamic=inst.max_layer)
+                self.assertEqual(sample.dynamic, layer, (name, note))
+                level = LEVEL_REF_DB + DYNAMIC_DB["p"] + INSTRUMENT_TRIM_DB[name]
+                self.assertAlmostEqual(loudness_db(leveled(sample, "p")), level, delta=0.5, msg=(name, note))
+        flute = instrument("flute")  # not gap-filled: its unrecorded top note stays unplayable
+        self.assertEqual(flute.gap_filled, frozenset())
+        with self.assertRaises(KeyError):
+            flute.note("F7", "p", 1.0, max_dynamic=flute.max_layer)
 
     def test_hairpin_shape(self):
         shaped = hairpin(np.ones(1000, dtype=np.float32))
@@ -200,7 +242,8 @@ class RenderTest(unittest.TestCase):
     def test_phrase_continues_over_the_loop_point(self):
         line = voice_line(instrument("clarinet"), voice([1, 3], beats=2), C.lydian, 2, 60)  # no rest at all
         self.assertEqual(len(line), 2 * SAMPLE_RATE)
-        self.assertGreater(float(np.abs(line[:200]).max()), 0.001)  # the last note's tail sounds at the start
+        tail = float(np.abs(line[:200]).max()) / float(np.abs(line).max())
+        self.assertGreater(tail, 0.01)  # the last note's tail sounds at the start
 
     def test_volume_sine_in_stems(self):
         Config(argv=[], tempo=60, output_dir=self.tmp, stems=True, reverb=0, master=False)
@@ -297,7 +340,8 @@ class HumanizeTest(unittest.TestCase):
 
         plain, played = notes(three_times(False)), notes(three_times(True))
         self.assertTrue(np.allclose(plain[0], plain[1]) and np.allclose(plain[1], plain[2]))
-        self.assertGreater(float(np.abs(played[0] - played[1]).max()), 0.01)  # another take (or level)
+        peak = float(np.abs(played[0]).max())
+        self.assertGreater(float(np.abs(played[0] - played[1]).max()), 0.05 * peak)  # another take (or level)
 
 
 class IntonationTest(unittest.TestCase):

@@ -156,7 +156,7 @@ REPAIR_STEPS = 150  # nudges allowed to clear a candidate of parallels and too m
 # Wider than an octave counts as the octave-smaller interval with its limit an octave lower.
 SPACING_FLOOR = {1: 72, 2: 67, 3: 48, 4: 46, 5: 45, 6: 60, 7: 34, 8: 41, 9: 41, 10: 41, 11: 48}
 CLASHES_PER_MINUTE = 1.5  # a soft rule: this many too-close moments per minute are tolerated
-CYCLE_SECONDS = (6, 10)  # each voice's loop, at the piece's tempo (rounded to whole beats)
+CYCLE_SECONDS = (8, 13)  # each voice's loop, at the piece's tempo (rounded to whole beats)
 MIN_DISTINCT_SPANS = 3  # at least this many different cycle lengths, so the voices phase
 MAX_ATTEMPTS = 100_000  # cycle-length draws are cheap; patterns are only written for ones that fit
 # sustaining voices: a few long notes filling the cycle
@@ -657,6 +657,8 @@ def generate(seed: int, notes: PitchSet, config: Config | None = None) -> dict[s
         if voices is None:
             continue
         voices = {n: _rearticulate(v, instrument(n, config), notes, beat_seconds) for n, v in voices.items()}
+        if len(clashes(voices, notes, config)) > int(CLASHES_PER_MINUTE * float(total) / config.bpm()):
+            continue  # renewing long holds started notes against another voice's: try another piece
         return {
             name: replace(v, lfo=_lfo(rng, int(total / v.span), float(total * beat_seconds)), lfo_phase=LFO_START_PHASE)
             for name, v in voices.items()

@@ -17,6 +17,7 @@ from quintet.effects import (
     reflections,
     saturate,
     send_gain,
+    voice_tone,
 )
 from quintet.render import write_wav
 
@@ -110,6 +111,20 @@ def test_place_delays_and_darkens_further_back():
     assert band_rms(back, 8000, 16000) < 0.75 * band_rms(line, 8000, 16000)
     assert abs(band_rms(back, 200, 1000) / band_rms(line, 200, 1000) - 1) < 0.05
     assert send_gain(0) == 1 and send_gain(1) > send_gain(0.5) > 1
+
+
+def test_voice_tone_tames_the_oboe_and_leaves_the_rest():
+    line = RNG.uniform(-0.1, 0.1, SAMPLE_RATE * 2).astype(np.float32)
+    for name in ("flute", "clarinet", "horn", "bassoon"):
+        assert voice_tone(line, name) is line
+    oboe = voice_tone(line, "oboe")
+    assert band_rms(oboe, 1000, 1500) < 0.8 * band_rms(line, 1000, 1500)  # the nasal honk
+    assert band_rms(oboe, 2600, 3500) < 0.8 * band_rms(line, 2600, 3500)  # the reedy edge
+    assert band_rms(oboe, 10000, 16000) < 0.8 * band_rms(line, 10000, 16000)  # the buzz on top
+    assert abs(band_rms(oboe, 200, 500) / band_rms(line, 200, 500) - 1) < 0.05  # the body is kept
+    # loop-safe: the start sounds as it does following the end
+    twice = voice_tone(np.concatenate([line, line]), "oboe")
+    assert np.allclose(oboe[:4096], twice[len(line) : len(line) + 4096], atol=1e-4)
 
 
 def test_reflections_reach_the_nearer_wall_first():

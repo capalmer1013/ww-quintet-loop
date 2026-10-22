@@ -33,6 +33,7 @@ __all__ = [
     "finish",
     "reverb",
     "impulse_response",
+    "voice_tone",
     "place",
     "reflections",
     "send_gain",
@@ -46,6 +47,9 @@ __all__ = [
 # darker and with more of the hall in it
 DEPTH_DELAY_MS = 6.0  # at depth 1: about 2 m further away
 DEPTH_SHELF_HZ, DEPTH_SHELF_DB = 4000.0, -4.0  # at depth 1: air absorbs the highs
+# per-instrument tone, by ear, as (hz, dB, q) peaks then a (hz, dB) high shelf: the oboe's nasal
+# honk and reedy edge down (the latter also where mastering's presence boost lands), its buzz softened
+VOICE_EQ = {"oboe": ([(1200.0, -3.0, 1.0), (3000.0, -3.0, 1.0)], (6000.0, -3.0))}
 DEPTH_SEND_DB = 4.0  # extra hall at depth 1
 FILTER_PREROLL_SECONDS = 0.1  # plenty for a shelf or pass filter to settle
 # early reflections: (ms after the direct sound, dB) off alternate side walls, left first. A voice
@@ -113,6 +117,15 @@ def _gain_to_target(audio: np.ndarray) -> float:
 
 
 # --- the stage ---
+
+
+def voice_tone(line: np.ndarray, name: str) -> np.ndarray:
+    """A mono line with its instrument's VOICE_EQ (the line itself if it has none)."""
+    if name not in VOICE_EQ or len(line) == 0:
+        return line
+    peaks, (shelf_hz, shelf_db) = VOICE_EQ[name]
+    board = Pedalboard([*(PeakFilter(hz, db, q) for hz, db, q in peaks), HighShelfFilter(shelf_hz, shelf_db)])
+    return _looped(board, line, FILTER_PREROLL_SECONDS)
 
 
 def place(line: np.ndarray, depth: float) -> np.ndarray:
@@ -260,6 +273,9 @@ def master(audio: np.ndarray, saturation: float = 0.0) -> np.ndarray:
     """EQ, saturate, compress, normalise to TARGET_LUFS and limit to CEILING_DB."""
     if audio.shape[1] == 0 or not np.any(audio):
         return audio
+    # the mix arrives far below full scale (levelling only cuts): bring its peak to full scale first,
+    # or the loudness meter's absolute gate (-70 LUFS) would leave out its quiet passages
+    audio = audio / float(np.abs(audio).max())
     audio = audio * _gain_to_target(audio)  # so saturation and the compressor mean the same for every piece
     audio = saturate(_looped(Pedalboard(eq_board()), audio, FILTER_PREROLL_SECONDS), saturation)
     compressor = Pedalboard([Compressor(TARGET_LUFS - COMP_BELOW_TARGET, COMP_RATIO, COMP_ATTACK_MS, COMP_RELEASE_MS)])

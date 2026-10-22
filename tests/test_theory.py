@@ -117,9 +117,25 @@ class HarmonyTest(unittest.TestCase):
         self.assertEqual(len({p.root for p in picks}), 12)
         qualities = Counter(p.quality for p in picks)
         self.assertEqual(set(qualities), set(HARMONY_WEIGHTS))
-        self.assertGreater(qualities["lydian"], qualities["phrygian"])  # leans warm
-        self.assertNotIn("locrian", qualities)
-        self.assertTrue(all(len(p.pitch_classes) == 7 for p in picks))  # whole modes
+        self.assertEqual(max(qualities, key=qualities.get), "lydian")
+        for dark in ("minor", "phrygian", "locrian"):
+            self.assertNotIn(dark, qualities)
+        minor_third = sum(n for q, n in qualities.items() if 3 in getattr(C, q).intervals)
+        self.assertLess(minor_third / len(picks), 0.2)  # mostly bright or ambiguous
+        self.assertTrue(all(len(p.pitch_classes) == 7 or p.quality.startswith("quartal") for p in picks))
+
+    def test_quartal_sets_are_stacked_fourths(self):
+        self.assertEqual(C.quartal.pitch_classes, [C, D, F, G, Bb])
+        self.assertEqual(C.quartal_bright.pitch_classes, [C, D, E, G, A])
+        for quality, parent in (("quartal", "mixolydian"), ("quartal_bright", "lydian")):
+            chord = getattr(C, quality)
+            on_circle = {i * 7 % 12 for i in chord.intervals}  # places round the circle of 5ths
+            n = len(on_circle)
+            chained = any(on_circle == {(p + k) % 12 for k in range(n)} for p in range(12))
+            self.assertTrue(chained, quality)  # one unbroken chain of 5ths (4ths downwards)
+            self.assertEqual(chord.scale.quality, parent)
+            self.assertEqual(chord.bass, [C, G])
+            self.assertFalse({3, 4} & {(pc - C) % 12 for pc in chord.core}, quality)  # no 3rd in the core
 
     def test_resolve_random_chord_on_a_root(self):
         picks = {resolve_notes("D.random", s) for s in range(50)}

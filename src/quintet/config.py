@@ -57,7 +57,7 @@ class Config:
         default=440.0, metadata={"help": "concert pitch in Hz; the samples are at 440, 432 is about 32 cents flat"}
     )
     count: int = field(default=1, metadata={"help": "with --seeds now: how many new pieces to make"})
-    max_seconds: float = field(default=360.0, metadata={"help": "longest allowed piece (one full phase cycle)"})
+    max_seconds: float = field(default=480.0, metadata={"help": "longest allowed piece (one full phase cycle)"})
     output_dir: Path = field(default=Path("out"), metadata={"help": "where pieces are written"})
     stems: bool = field(default=False, metadata={"help": "also write one mono WAV per instrument"})
     code: bool = field(default=False, metadata={"help": "also write a .py file that reproduces each piece"})

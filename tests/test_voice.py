@@ -86,8 +86,9 @@ class LfoTest(unittest.TestCase):
 
     def test_generated_sines_are_slow_and_out_of_step(self):
         out_of_step = total_voices = 0
+        config = Config(argv=[], tempo=60)
         for s in range(40):
-            v = generate(s, C.lydian)
+            v = generate(s, C.lydian, config)
             total = piece_beats(v.values())
             seconds_ = float(total)  # 60 bpm: one beat per second
             for x in v.values():
@@ -190,6 +191,14 @@ class VoicingTest(unittest.TestCase):
 
 
 class EveryChordRendersTest(unittest.TestCase):
+    def test_quartal_sets_keep_the_3rd_out_of_horn_and_bassoon(self):
+        for root in range(12):
+            for quality in ("quartal", "quartal_bright"):
+                notes = getattr(PitchClass(root), quality)
+                for name in ("horn", "bassoon"):
+                    above_root = {(m - root) % 12 for m in palette(notes, instrument(name))}
+                    self.assertFalse({3, 4} & above_root, (root, quality, name))
+
     def test_every_palette_note_has_a_soft_sample(self):
         from quintet.theory import QUALITIES, PitchClass
 
@@ -401,14 +410,14 @@ class GenerateTest(unittest.TestCase):
             self.assertGreaterEqual(len({x.span for x in v.values()}), 3)
             self.assertTrue(all(x.dynamic in ("p", "mp") for x in v.values()))
 
-    def test_loops_last_6_to_10_seconds_at_any_tempo(self):
+    def test_loops_last_8_to_13_seconds_at_any_tempo(self):
         for tempo in (50, 60, 70):
             config = Config(argv=[], tempo=tempo)
             for s in range(15):
                 v = generate(s, resolve_notes("random", s), config)
                 for x in v.values():
-                    self.assertTrue(6 <= x.span * 60 / tempo <= 10, (tempo, s, x.span))
-                self.assertLessEqual(piece_beats(v.values()) * 60 / tempo, 360)
+                    self.assertTrue(8 <= x.span * 60 / tempo <= 13, (tempo, s, x.span))
+                self.assertLessEqual(piece_beats(v.values()) * 60 / tempo, 480)
         Config(argv=[], tempo=60)
 
     def test_sustainers(self):

@@ -20,7 +20,7 @@ help: ## List targets and every quintet flag
 	@echo '    --notes random | C.random | C.lydian | C.maj9 ...'
 	@echo '                                   key and mode, a mode on C, or a fixed set [random]'
 	@echo '    --tempo BPM                    0 = random 55-75 per seed [0]'
-	@echo '    --max-seconds S                longest piece (one full phase cycle) [360]'
+	@echo '    --max-seconds S                longest piece (one full phase cycle) [480]'
 	@echo '    --reverb AMOUNT                hall reverb, 0 = dry [0.5]'
 	@echo '    --room SIZE                    hall size 0-1, 0.8 is about a 2.6 s decay [0.8]'
 	@echo '    --reverb-ir FILE               a recorded space (impulse response WAV) instead of the hall [none]'

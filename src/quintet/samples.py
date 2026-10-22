@@ -17,6 +17,10 @@ DYNAMICS = ["pp", "p", "mp", "mf", "f", "ff"]  # softest to loudest
 # loudest recorded dynamic each instrument plays (louder levels come from gain); everyone stays at mp
 # so the quintet blends rather than turning bright or brassy
 MAX_LAYERS = {"flute": "mp", "oboe": "mp", "clarinet": "mp", "bassoon": "mp", "horn": "mp"}
+# instruments whose pitches with nothing recorded at or below max_layer borrow the nearest louder
+# layer (levelled to the dynamic played) rather than going unplayed: the oboe's p layer skips
+# C5-Ds5 and the horn's Cs5-F5, both inside their sweet ranges
+GAP_FILL = frozenset({"oboe", "horn"})
 NOTE_NAMES = ["C", "Cs", "D", "Ds", "E", "F", "Fs", "G", "Gs", "A", "As", "B"]
 # Nominal seconds for each recorded length; used to pick a sample for a duration.
 LENGTH_SECONDS = {"0.25s": 0.25, "0.5s": 0.5, "1s": 1.0, "1.5s": 1.5, "long": 3.0, "very-long": 15.0, "phrase": 0.0}
@@ -115,7 +119,9 @@ class Instrument:
         self.pitches = frozenset(s.midi for s in self.notes)  # MIDI numbers with plain-note samples
         self.max_layer = MAX_LAYERS.get(name, "ff")
         soft = DYNAMICS[: DYNAMICS.index(self.max_layer) + 1]
-        self.playable = frozenset(s.midi for s in self.notes if s.dynamic in soft)  # ... at or below max_layer
+        soft_pitches = frozenset(s.midi for s in self.notes if s.dynamic in soft)  # ... at or below max_layer
+        self.gap_filled = self.pitches - soft_pitches if name in GAP_FILL else frozenset()  # ... borrowed louder
+        self.playable = soft_pitches | self.gap_filled
 
     def __repr__(self) -> str:
         return f"Instrument({self.name!r}, {len(self.notes)} notes, {len(self.extended)} extended)"
@@ -153,6 +159,7 @@ class Instrument:
 
     def note(self, note: str, dynamic: str = "mf", length: str | float = "1s", max_dynamic: str = "ff") -> Sample:
         """One plain note, falling back to the nearest recorded dynamic no louder than max_dynamic.
+        A GAP_FILL instrument with nothing that soft for the note takes its nearest louder layer.
 
         length is a recorded length ("0.25s", "long", ...) or a duration in seconds.
         - A recorded length picks that recording at the nearest dynamic (else falls back as below,
@@ -166,6 +173,9 @@ class Instrument:
         nearest = sorted(allowed, key=lambda d: (abs(DYNAMICS.index(d) - target), -DYNAMICS.index(d)))
         by_dynamic = [(d, self.find(note, d)) for d in nearest]
         by_dynamic = [(d, matches) for d, matches in by_dynamic if matches]
+        if not by_dynamic and self.name in GAP_FILL:
+            louder = DYNAMICS[DYNAMICS.index(max_dynamic) + 1 :]
+            by_dynamic = [(d, matches) for d in louder if (matches := self.find(note, d))][:1]
         if not by_dynamic:
             raise KeyError(f"{self.name} has no sample for {note}")
         if isinstance(length, str):
