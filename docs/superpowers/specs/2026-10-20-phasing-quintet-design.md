@@ -793,3 +793,35 @@ pieces sounded like random notes. Now 100% do.
   bassoon's palettes for a quartal set hold no 3rd. The generation fixture is re-recorded.
 - `LfoTest.test_generated_sines_are_slow_and_out_of_step` now passes its own 60 bpm config, so it
   no longer depends on which test ran before it.
+
+## 45. A wetter, longer hall by default (added 2026-10-22)
+
+- **Why:** the default room sounded too dry.
+- **`--reverb` defaults to 0.75** (was 0.5): about 3.5 dB more hall.
+- **`--room` defaults to 0.9** (was 0.8): RT60 about 2.85 s (was 2.6).
+- **`make lush`** moves to `--reverb 1.0 --room 1.0` (RT60 about 3.1 s), so it stays the wetter preset.
+
+## 46. Firmer compression, peaks at −3 dBFS (added 2026-10-22)
+
+- **Why:** at −16 LUFS the mastered pieces peaked at only −4 to −6 dBFS, so the −1 dB limiter never
+  engaged; the mix wanted a little more compression and peaks at −3 dBFS.
+- **More compression on its own lowers the peaks** at a fixed loudness, so the target rises too
+  and the limiter sets the ceiling.
+- **`COMP_RATIO` 3** (was 2), **`COMP_BELOW_TARGET` 10 dB** (was 8), **`TARGET_LUFS` −13** (was
+  −16), **`CEILING_DB` −3** (was −1).
+- **Measured** over seeds 7, 8 and 9: −12.3 to −12.6 LUFS (the limiter adds a little), peaks −3.0
+  to −3.8 dBFS, short-term loudness range 2.3–4.4 LU (was 3.4–6.0).
+
+## 47. Dorian off the random menu, for now (added 2026-10-22)
+
+- **`HARMONY_WEIGHTS`** drops dorian (was 1.5): lydian 4, `quartal` 2, `quartal_bright` 2,
+  mixolydian 1.5, major 1. No random pick has a minor 3rd now.
+- `--notes D.dorian` still works by name; put it back in `HARMONY_WEIGHTS` to restore it.
+- **Tests:** random picks never include dorian, minor, phrygian or locrian, and none holds a minor
+  3rd. The generation fixture is re-recorded.
+
+## 48. A wider tempo range (added 2026-10-22)
+
+- **`TEMPO_RANGE`** is 60–85 bpm (was 55–75), still a whole number, random per seed: faster at the
+  top, and nothing below 60 now that the hall is longer and the mix more compressed.
+- Loop lengths stay 8–13 s, so a faster piece fits more beats into each loop.

@@ -67,7 +67,7 @@ REVERB_HIGHPASS_HZ, REVERB_LOWPASS_HZ = 250.0, 7000.0  # the hall's own EQ: no l
 REVERB_FILTER_STAGES = 2  # each first-order: two give 12 dB/octave
 REVERB_CROSSFEED = 0.5  # how much of the other channel each side of the hall hears
 # the built-in hall: decaying noise, each octave decaying at its own rate (highs die first), RT60
-# (to -60 dB) from HALL_RT60_SECONDS[0] at --room 0 to [1] at --room 1, so 0.8 is about 2.6 s
+# (to -60 dB) from HALL_RT60_SECONDS[0] at --room 0 to [1] at --room 1, so 0.9 is about 2.85 s
 HALL_RT60_SECONDS = (0.6, 3.1)
 HALL_OCTAVES_HZ = (63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000)
 HALL_DECAY_RATIO = (1.3, 1.2, 1.1, 1.0, 1.0, 0.9, 0.75, 0.55, 0.4)  # each octave's RT60, times the hall's
@@ -85,9 +85,9 @@ AIR_HZ, AIR_DB = 10000.0, 1.5  # a high shelf
 SATURATION_DRIVE = 3.0
 # gentle compression of anything louder than COMP_BELOW_TARGET under the target loudness (after the
 # piece is brought to that loudness), so quiet hairpins and sine troughs survive small speakers
-COMP_BELOW_TARGET, COMP_RATIO, COMP_ATTACK_MS, COMP_RELEASE_MS = 8.0, 2.0, 20.0, 300.0
-TARGET_LUFS = -16.0  # typical for phones and streaming
-CEILING_DB = -1.0
+COMP_BELOW_TARGET, COMP_RATIO, COMP_ATTACK_MS, COMP_RELEASE_MS = 10.0, 3.0, 20.0, 300.0
+TARGET_LUFS = -13.0  # loud enough for phones that the peaks reach the ceiling
+CEILING_DB = -3.0  # headroom for lossy encoding and players' own processing
 LIMITER_RELEASE_MS = 100.0
 DYNAMICS_PREROLL_SECONDS = 2.0  # several compressor/limiter release times
 PEAK = 0.99  # without mastering, the mix is only scaled down to keep its peak under this

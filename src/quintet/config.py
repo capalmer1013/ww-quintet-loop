@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import ClassVar
 
 DEFAULT_SAMPLE_ROOT = Path(__file__).resolve().parents[2] / "samples"  # the repository's samples/
-TEMPO_RANGE = (55, 75)  # bpm, inclusive, when the tempo is random per seed
+TEMPO_RANGE = (60, 85)  # bpm, inclusive, when the tempo is random per seed
 TIME_SEEDS_PER_SECOND = 100  # --seeds now: the Unix time in hundredths of a second
 PIECE_NAME = "piece_{seed}"
 
@@ -27,7 +27,7 @@ class Config:
     """
 
     sample_root: Path = field(default=DEFAULT_SAMPLE_ROOT, metadata={"help": "directory of instrument sample folders"})
-    tempo: float = field(default=0.0, metadata={"help": "beats per minute; 0 = random 55-75 per seed"})
+    tempo: float = field(default=0.0, metadata={"help": "beats per minute; 0 = random 60-85 per seed"})
     notes: str = field(
         default="random",
         metadata={
@@ -38,8 +38,8 @@ class Config:
         default="now",
         metadata={"help": "seed, range A-B (B exclusive), or now (one piece seeded from the time); one piece per seed"},
     )
-    reverb: float = field(default=0.5, metadata={"help": "hall reverb amount (0 = dry)"})
-    room: float = field(default=0.8, metadata={"help": "hall size, 0-1 (0.8 is about a 2.6 s decay)"})
+    reverb: float = field(default=0.75, metadata={"help": "hall reverb amount (0 = dry)"})
+    room: float = field(default=0.9, metadata={"help": "hall size, 0-1 (0.9 is about a 2.85 s decay)"})
     reverb_ir: str = field(
         default="", metadata={"help": "impulse response WAV of a real space, used instead of the built-in hall"}
     )

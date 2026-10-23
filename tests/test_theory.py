@@ -118,10 +118,9 @@ class HarmonyTest(unittest.TestCase):
         qualities = Counter(p.quality for p in picks)
         self.assertEqual(set(qualities), set(HARMONY_WEIGHTS))
         self.assertEqual(max(qualities, key=qualities.get), "lydian")
-        for dark in ("minor", "phrygian", "locrian"):
+        for dark in ("dorian", "minor", "phrygian", "locrian"):
             self.assertNotIn(dark, qualities)
-        minor_third = sum(n for q, n in qualities.items() if 3 in getattr(C, q).intervals)
-        self.assertLess(minor_third / len(picks), 0.2)  # mostly bright or ambiguous
+        self.assertTrue(all(3 not in p.intervals for p in picks))  # bright or ambiguous, never minor
         self.assertTrue(all(len(p.pitch_classes) == 7 or p.quality.startswith("quartal") for p in picks))
 
     def test_quartal_sets_are_stacked_fourths(self):

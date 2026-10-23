@@ -49,14 +49,14 @@ For example, `make lush ARGS="--count 5"` makes five lush pieces.
 | `--notes` | `random` | `random` (key and chord), `C.random` (chord on that key) or a fixed set like `C.maj9`, `Fs.maj7s11`, `Bb.lydian` |
 | `--seeds` | `now` | Seed `A`, a range `A-B` with `B` excluded, or `now`: one piece seeded from the current Unix time in hundredths of a second |
 | `--count` | `1` | With `--seeds now`: how many new pieces to make (each gets the next free clock seed) |
-| `--tempo` | `0` | Beats per minute; `0` = a whole-number tempo from 55 to 75, random per seed |
-| `--reverb` | `0.5` | Hall reverb amount (`0` = dry) |
-| `--room` | `0.8` | Hall size, 0–1 (`0.8` ≈ 2.6 s decay) |
+| `--tempo` | `0` | Beats per minute; `0` = a whole-number tempo from 60 to 85, random per seed |
+| `--reverb` | `0.75` | Hall reverb amount (`0` = dry) |
+| `--room` | `0.9` | Hall size, 0–1 (`0.9` ≈ 2.85 s decay) |
 | `--reverb-ir FILE` | none | An impulse response WAV of a real space (any rate, mono or stereo), used instead of the built-in hall (see Reverb) |
 | `--humanize` / `--no-humanize` | on | Play it like people: timing, breaths, varied takes and levels (see Performance) |
 | `--intonation` / `--no-intonation` | on | Each note tuned a few cents off, differently every time (see Performance) |
 | `--a4 HZ` | 440 | Concert pitch. The samples are recorded at A440, so the default plays them as recorded; `--a4 432` plays everything about 32 cents flat |
-| `--master` / `--no-master` | on | Phone-friendly EQ, compression and −16 LUFS loudness (see Mastering) |
+| `--master` / `--no-master` | on | Phone-friendly EQ, compression, −13 LUFS loudness and −3 dBFS peaks (see Mastering) |
 | `--saturation` | `0.3` | Gentle tape-style warmth when mastering (`0` = clean) |
 | `--max-seconds` | `480` | Longest allowed piece (one full phase cycle) |
 | `--output-dir` | `out` | Where files are written |
@@ -86,7 +86,7 @@ With `--code`, each piece is also written as a script:
 ```python
 from quintet import *
 
-Config(tempo=60.0, reverb=0.5, room=0.8, master=True, saturation=0.3, humanize=True, intonation=True, a4=440.0)
+Config(tempo=60.0, reverb=0.75, room=0.9, master=True, saturation=0.3, humanize=True, intonation=True, a4=440.0)
 render('piece_2000', C.lydian,
     flute    = voice([6, 0, 5], beats=4, dynamic='mp'),
     oboe     = voice([2, 3, 4], beats=6),
@@ -235,10 +235,11 @@ On by default (`--no-master` turns it off), in `src/quintet/effects.py`, using p
   air.
 - **Saturation:** `tanh`-shaped, like tape. Quiet passages pass through unchanged and peaks round
   off with a little warmth. `--saturation` sets how much (`0` = clean).
-- **Compression:** gentle (2:1), from 8 dB below the target loudness, so quiet passages survive
-  small speakers.
-- **Loudness:** every piece is normalised to −16 LUFS (the usual level for phones and streaming),
-  measured properly with pyloudnorm, with a −1 dBFS limiter.
+- **Compression:** 3:1, from 10 dB below the target loudness, so quiet passages survive small
+  speakers and the loudness stays even (about 2–4 LU of range).
+- **Loudness:** every piece is normalised to −13 LUFS, measured properly with pyloudnorm, into a
+  −3 dBFS limiter. That's loud enough that the peaks reach the limiter (about −3 to −4 dBFS), with
+  headroom left for lossy encoding.
 - **Seamless loops:** each stage first runs over the piece's own ending, so the loop point sounds
   exactly as it does when the file repeats.
 
@@ -247,7 +248,7 @@ On by default (`--no-master` turns it off), in `src/quintet/effects.py`, using p
 The staged mix is convolved with a hall, in `src/quintet/effects.py`:
 
 - **The built-in hall** is decaying noise, with each octave decaying at its own rate: lows ring a
-  little longer and highs die first, as in a real hall. `--room` sets its size (`0.8` ≈ 2.6 s).
+  little longer and highs die first, as in a real hall. `--room` sets its size (`0.9` ≈ 2.85 s, `1` ≈ 3.1 s).
 - **A recorded space:** `--reverb-ir FILE` uses an impulse response WAV instead, at any sample rate,
   mono or stereo (free ones are in the [OpenAIR library](https://www.openair.hosted.york.ac.uk/)).
   `--room` is then ignored.
@@ -281,7 +282,8 @@ The staged mix is convolved with a hall, in `src/quintet/effects.py`:
 ## Harmony
 
 With `--notes random`, each seed picks a key (all 12) and a harmony: mostly lydian, then quartal
-sets for tonal ambiguity, then the other bright modes. Dorian is the only one with a minor 3rd.
+sets for tonal ambiguity, then the other bright modes. None has a minor 3rd: dorian is off for
+now.
 
 | Harmony | On C | Weight |
 |---|---|---|
@@ -289,7 +291,6 @@ sets for tonal ambiguity, then the other bright modes. Dorian is the only one wi
 | `quartal` | C D F G B♭: the 4ths stack B♭–F–C–G–D, root mid-stack (suspended) | 2 |
 | `quartal_bright` | C D E G A: the 4ths stack C–G–D–A–E, root at the bottom (open, bright) | 2 |
 | `mixolydian` | C D E F G A B♭ | 1.5 |
-| `dorian` | C D E♭ F G A B♭ | 1.5 |
 | `major` | C D E F G A B | 1 |
 
 - **Voicing:** the bassoon plays the root and 5th. In a mode the horn plays its triad and the
@@ -300,7 +301,7 @@ sets for tonal ambiguity, then the other bright modes. Dorian is the only one wi
   mixolydian and lydian respectively, so `quartal_bright` picks up an occasional F♯.
 - **Colour from spacing, not crowding:** see the spacing rule below.
 - **Fixed harmonies:** e.g. `--notes D.quartal`, `--notes D.lydian`, or a chord like
-  `--notes C.maj9` or `--notes Fs.maj7s11`. Minor and phrygian are still there by name.
+  `--notes C.maj9` or `--notes Fs.maj7s11`. Dorian, minor and phrygian are still there by name.
 - **Separate streams:** the harmony and the tempo each come from their own random stream for the
   seed. Fixing one (e.g. `--tempo 60`) doesn't change what the seed picks for the other.
 - **Weights:** `HARMONY_WEIGHTS` in `src/quintet/theory.py` sets them.
@@ -472,7 +473,7 @@ samples/<instrument>/extended/<technique>/<instrument>_<note>_<technique>_<dynam
 - **Only ever turned down:** that reference is set low enough that no recording is ever boosted,
   even at `ff` with the biggest metric accent and level variation on top (a test checks every
   recording). The quietest flute recordings set it, with about 1 dB to spare. Mastering brings the
-  finished mix up to −16 LUFS.
+  finished mix up to −13 LUFS.
 - **Trims are cuts:** `INSTRUMENT_TRIM_DB` in `src/quintet/render.py` adjusts each instrument by
   ear: the oboe 6 dB down so it doesn't stick out, the horn 2 dB down so it carries from the back
   of the stage without dominating, and the flute, clarinet and bassoon 1.5 dB down.

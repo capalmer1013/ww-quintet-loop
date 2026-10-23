@@ -19,12 +19,12 @@ help: ## List targets and every quintet flag
 	@echo '    --count N                      with --seeds now: how many new pieces [1]'
 	@echo '    --notes random | C.random | C.lydian | C.maj9 ...'
 	@echo '                                   key and mode, a mode on C, or a fixed set [random]'
-	@echo '    --tempo BPM                    0 = random 55-75 per seed [0]'
+	@echo '    --tempo BPM                    0 = random 60-85 per seed [0]'
 	@echo '    --max-seconds S                longest piece (one full phase cycle) [480]'
-	@echo '    --reverb AMOUNT                hall reverb, 0 = dry [0.5]'
-	@echo '    --room SIZE                    hall size 0-1, 0.8 is about a 2.6 s decay [0.8]'
+	@echo '    --reverb AMOUNT                hall reverb, 0 = dry [0.75]'
+	@echo '    --room SIZE                    hall size 0-1, 0.9 is about a 2.85 s decay [0.9]'
 	@echo '    --reverb-ir FILE               a recorded space (impulse response WAV) instead of the hall [none]'
-	@echo '    --master / --no-master         phone-friendly EQ, compression, -16 LUFS [on]'
+	@echo '    --master / --no-master         phone-friendly EQ, compression, -13 LUFS, -3 dB peaks [on]'
 	@echo '    --saturation AMOUNT            gentle tape-style warmth when mastering, 0 = clean [0.3]'
 	@echo '    --humanize / --no-humanize     timing, breaths, varied takes and levels [on]'
 	@echo '    --intonation / --no-intonation each note tuned a few cents off [on]'
@@ -51,7 +51,7 @@ batch: ## N new pieces in one run (default 10): make batch N=20
 	uv run quintet --count $(N) $(ARGS)
 
 lush: ## The warmest sound: a little more reverb, a bigger hall
-	uv run quintet --reverb 0.7 --room 0.9 $(ARGS)
+	uv run quintet --reverb 1.0 --room 1.0 $(ARGS)
 
 daw: ## For mixing elsewhere: per-instrument stems and a piece file
 	uv run quintet --stems --code $(ARGS)

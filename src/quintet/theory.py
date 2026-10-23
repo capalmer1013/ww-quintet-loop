@@ -145,15 +145,14 @@ PARENT_SCALES = {
     "quartal_bright": "lydian",
 }
 
-# Random harmony: lydian most, quartal sets for ambiguity, then the other bright modes; dorian is
-# the only minor-3rd one (minor, phrygian and locrian never). Colour comes from where voices sit,
-# not from crowding: see the spacing rule in voice.py.
+# Random harmony: lydian most, quartal sets for ambiguity, then the other bright modes; none has a
+# minor 3rd (dorian is off for now; minor, phrygian and locrian never). Colour comes from where
+# voices sit, not from crowding: see the spacing rule in voice.py.
 HARMONY_WEIGHTS = {
     "lydian": 4,
     "quartal": 2,
     "quartal_bright": 2,
     "mixolydian": 1.5,
-    "dorian": 1.5,
     "major": 1,
 }
 

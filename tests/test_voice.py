@@ -361,7 +361,7 @@ class TempoTest(unittest.TestCase):
         config = Config(argv=[], tempo=0)
         tempos = [config.piece_tempo(s) for s in range(200)]
         self.assertEqual(tempos[:10], [config.piece_tempo(s) for s in range(10)])
-        self.assertEqual((min(tempos), max(tempos)), (55, 75))
+        self.assertEqual((min(tempos), max(tempos)), (60, 85))
         self.assertTrue(all(t == int(t) for t in tempos))
         with self.assertRaises(ValueError):
             config.bpm()
