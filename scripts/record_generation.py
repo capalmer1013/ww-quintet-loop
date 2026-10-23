@@ -7,7 +7,7 @@ changes that weren't.
 import json
 from pathlib import Path
 
-from quintet import QUINTET, Config, generate, resolve_notes
+from quintet import QUINTET, Config, piece_for_seed
 
 OUT = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "generation.json"
 SEEDS = range(20)
@@ -17,9 +17,7 @@ def main() -> None:
     pieces = []
     for seed in SEEDS:
         config = Config(argv=[], tempo=0)
-        config.tempo = config.piece_tempo(seed)
-        notes = resolve_notes("random", seed)
-        voices = generate(seed, notes, config)
+        notes, voices = piece_for_seed(seed, config)
         pieces.append(
             {
                 "seed": seed,

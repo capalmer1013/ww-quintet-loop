@@ -122,13 +122,13 @@ class Config:
         """`count` consecutive free seeds from the clock, each claimed as it is reached."""
         if self.count < 1:
             raise ValueError(f"--count must be at least 1, got {self.count}")
-        seed = self.claim_time_seed()
+        seed = self._claim_time_seed()
         yield seed
         for _ in range(self.count - 1):
-            seed = self.claim_time_seed(after=seed)
+            seed = self._claim_time_seed(after=seed)
             yield seed
 
-    def claim_time_seed(self, after: int | None = None) -> int:
+    def _claim_time_seed(self, after: int | None = None) -> int:
         """The current Unix time in hundredths of a second (or the first seed after `after`), as a
         seed. The seed is claimed by creating its output file exclusively, so runs started in the same
         instant (say, in parallel from a script) each move on to the next free seed instead of sharing one."""

@@ -136,17 +136,17 @@ hand:
 ```python
 from quintet import *
 
-Config(tempo=60.0, reverb=0.75, room=0.9, master=True, saturation=0.3, humanize=True, intonation=True, a4=440.0)
-render('piece_2000', C.lydian,
-    flute    = voice([6, 0, 5], beats=4, dynamic='mp'),
-    oboe     = voice([2, 3, 4], beats=6),
-    clarinet = voice([1, _, _, _, _, _, 3, _, _], beats=9, drift=8),
-    horn     = voice([1, _, _, 3], beats=4),
-    bassoon  = voice([7, _, _, _, _, 3, _, _, _, 3, _, _, _, _, 0], beats=15, drift=8, dynamic='mp'),
+Config(tempo=72.0, reverb=0.75, room=0.9, master=True, saturation=0.3, humanize=True, intonation=True, a4=440.0)
+render('piece_7', F.quartal_bright,
+    flute    = voice([2, [1, 2], 3, 5, [1, '1-'], 1, 6, 6, [4, '4-'], 3, 1, 0], beats=12, dynamic='mp', lfo=4, lfo_phase=0.5),
+    oboe     = voice([3, '3=', 0, 1, 2, 0, [3, 1], _, '1=', 2, 0, 2, [1, '1+'], 1, 0], beats=15, lfo=5, lfo_phase=0.5),
+    clarinet = voice([2, _, _, 2, _, _, _, _, _, _], beats=10, dynamic='mp', lfo=5, lfo_phase=0.5),
+    horn     = voice([2, 2, 2, 2, 2, 2, 0, 2, _, 2, 2, 2, _, 0, 0], beats=15, lfo=5, lfo_phase=0.5),
+    bassoon  = voice([2, '2=', '2=', '2=', '2=', 3, '3=', '3=', 3, '3=', '3=', 0], beats=12, lfo=4, lfo_phase=0.5),
 )
 ```
 
-- Run it with `uv run python out/piece_2000.py`; flags still apply (e.g. `--stems`, `--tempo 90`).
+- Run it with `uv run python out/piece_7.py`; flags still apply (e.g. `--stems`, `--tempo 90`).
 - `voice(pattern, beats, drift=0, dynamic="p", lfo=0, lfo_phase=0.0)`: `pattern` repeats every
   `beats` beats; `drift=k` shortens the cycle to `beats * k/(k+1)`; `dynamic` is one of
   `pp p mp mf f ff`; `lfo=k` adds a volume sine with `k` cycles over the piece.

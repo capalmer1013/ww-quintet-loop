@@ -3,7 +3,7 @@
 from .config import PIECE_NAME, Config
 from .render import piece_code, render, seconds
 from .theory import resolve_notes
-from .voice import generate, piece_beats
+from .voice import piece_beats, piece_for_seed
 
 
 def main() -> None:
@@ -23,10 +23,8 @@ def main() -> None:
 
 def piece(config: Config, seed: int, requested_tempo: float) -> None:
     """Generate, render and report one piece."""
-    config.tempo = requested_tempo  # piece_tempo reads config.tempo: undo the previous seed's
-    config.tempo = config.piece_tempo(seed)  # what generate, render and piece_code use
-    notes = resolve_notes(config.notes, seed)
-    voices = generate(seed, notes, config)
+    config.tempo = requested_tempo  # piece_for_seed reads config.tempo: undo the previous seed's
+    notes, voices = piece_for_seed(seed, config)  # also sets the tempo render and piece_code use
     name = PIECE_NAME.format(seed=seed)
     paths = render(name, notes, **voices)
     if config.code:

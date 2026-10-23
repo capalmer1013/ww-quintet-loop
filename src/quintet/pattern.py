@@ -18,10 +18,28 @@ import re
 from dataclasses import dataclass
 from fractions import Fraction
 
-__all__ = ["_", "Event", "expand", "tile", "event_paths", "leaves", "accents", "STEP", "ACCENT_DB"]
+__all__ = [
+    "_",
+    "LEADING_HOLD",
+    "Event",
+    "expand",
+    "tile",
+    "event_paths",
+    "leaves",
+    "accents",
+    "STEP",
+    "palette_index",
+    "ACCENT_DB",
+]
 
 # A scale step or renewal: palette index, then "+" (step up), "-" (step down) or "=" (renew).
 STEP = re.compile(r"([1-9][0-9]*)([+=-])")
+
+
+def palette_index(element: int | str) -> int:
+    """The palette note a note element plays or steps from: 3 for 3, "3+", "3-" and "3="."""
+    return element if isinstance(element, int) else int(STEP.fullmatch(element).group(1))
+
 
 # Metric accent (dB) by level within a group: its first slot, the group start nearest the middle,
 # other group starts, everything else. Each level of nesting counts half as much as the one above.
@@ -42,7 +60,7 @@ class _Hold:
 
 
 _ = _Hold()  # hold: extend the previous note (or rest) through this slot
-_CONTINUE = "continue"  # Event index for a leading hold: extends whatever came before the cycle
+LEADING_HOLD = "continue"  # Event index for a leading hold: extends whatever came before the cycle
 
 
 @dataclass(frozen=True)
@@ -132,7 +150,7 @@ def _levels(n: int) -> list[int]:
 def expand(pattern: list, span: Fraction) -> list[Event]:
     """One cycle of a pattern as Events tiling [0, span).
 
-    A leading hold yields an Event with index _CONTINUE, which tile() merges into the previous
+    A leading hold yields an Event with index LEADING_HOLD, which tile() merges into the previous
     cycle's last event.
     """
     events: list[Event] = []
@@ -142,7 +160,7 @@ def expand(pattern: list, span: Fraction) -> list[Event]:
         elif events:
             _extend_last(events, leaf.beats)
         else:
-            events.append(Event(leaf.start, leaf.beats, _CONTINUE))
+            events.append(Event(leaf.start, leaf.beats, LEADING_HOLD))
     return events
 
 
@@ -156,7 +174,7 @@ def tile(pattern: list, span: Fraction, total: Fraction) -> list[Event]:
     for c in range(int(cycles)):
         offset = c * Fraction(span)
         for e in one:
-            if e.index == _CONTINUE:
+            if e.index == LEADING_HOLD:
                 if out:
                     _extend_last(out, e.beats)
                     continue

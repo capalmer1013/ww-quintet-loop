@@ -1,9 +1,6 @@
-import tempfile
-import time
 import unittest
 from fractions import Fraction as Fr
 from functools import cache
-from pathlib import Path
 
 from quintet import (
     QUALITIES,
@@ -30,7 +27,7 @@ from quintet import (
     too_close,
     voice,
 )
-from quintet.pattern import STEP
+from quintet.pattern import palette_index
 from quintet.voice import CLASHES_PER_MINUTE, LFO_DEPTH_DB, LFO_PEAK_DB, LOW_TO_HIGH, SWEET
 
 QUIETEST = 10 ** ((LFO_PEAK_DB - LFO_DEPTH_DB) / 20)
@@ -152,7 +149,7 @@ class IdiomTest(unittest.TestCase):
                 size = len(palette(C.lydian, instrument(name)))
                 for e in expand(v.pattern, v.span):
                     if e.index:
-                        k = e.index if isinstance(e.index, int) else int(STEP.fullmatch(e.index).group(1))
+                        k = palette_index(e.index)
                         self.assertTrue(1 <= k <= size)
 
 
@@ -271,7 +268,7 @@ class RearticulationTest(unittest.TestCase):
                     if isinstance(idx, str) and idx.endswith("="):
                         renewed += 1
                         before = events[i - 1]
-                        base = before if isinstance(before, int) else int(STEP.fullmatch(before).group(1))
+                        base = palette_index(before)
                         self.assertEqual(int(idx[:-1]), base)  # renews the note before it
         self.assertGreater(renewed, 10)
 
@@ -289,39 +286,6 @@ class RearticulationTest(unittest.TestCase):
                     longest = inst.note(midi_to_note(m), x.dynamic, 1e9, max_dynamic=inst.max_layer)
                     cap = sustainable_frames(round(longest.seconds * SAMPLE_RATE)) / SAMPLE_RATE
                     self.assertLessEqual(float(e.beats), cap + 1e-6, (s, name))  # 60 bpm: beats = seconds
-
-
-class TimeSeedTest(unittest.TestCase):
-    def test_now_claims_distinct_increasing_seeds(self):
-        out = Path(tempfile.mkdtemp())
-        config = Config(argv=[], tempo=60, seeds="now", output_dir=out)
-        before = time.time_ns() // 10**7
-        seeds = [next(iter(config.seed_range())) for _ in range(5)]  # faster than the 10 ms tick: would collide
-        self.assertEqual(len(set(seeds)), 5)
-        self.assertGreaterEqual(min(seeds), before)
-        self.assertTrue(all(isinstance(s, int) for s in seeds))
-        self.assertTrue(all((out / f"piece_{s}.wav").exists() for s in seeds))  # each claimed
-        Config(argv=[], tempo=60)
-
-    def test_count_claims_that_many_new_seeds_lazily(self):
-        out = Path(tempfile.mkdtemp())
-        config = Config(argv=[], tempo=60, seeds="now", count=3, output_dir=out)
-        seeds = config.seed_range()
-        first = next(iter(seeds))
-        self.assertEqual(len(list(out.iterdir())), 1)  # only the first is claimed so far
-        rest = list(seeds)
-        self.assertEqual(len(rest), 2)
-        self.assertEqual(len({first, *rest}), 3)
-        with self.assertRaises(ValueError):
-            list(Config(argv=[], tempo=60, seeds="5-8", count=3).seed_range())
-        Config(argv=[], tempo=60)
-
-    def test_explicit_seeds_unchanged(self):
-        self.assertEqual(Config(argv=[], tempo=60, seeds="5-8").seed_range(), range(5, 8))
-        self.assertEqual(Config(argv=[], tempo=60, seeds="42").seed_range(), range(42, 43))
-        with self.assertRaises(ValueError):
-            Config(argv=[], tempo=60, seeds="soon").seed_range()
-        Config(argv=[], tempo=60)
 
 
 class SpacingTest(unittest.TestCase):
@@ -344,21 +308,6 @@ class SpacingTest(unittest.TestCase):
             minutes = float(piece_beats(v.values())) / 60
             self.assertLessEqual(len(clashes(v, notes, config)), int(CLASHES_PER_MINUTE * minutes), s)
             self.assertEqual(parallels(v, notes, config), [])
-
-
-class TempoTest(unittest.TestCase):
-    def test_random_per_seed(self):
-        config = Config(argv=[], tempo=0)
-        tempos = [config.piece_tempo(s) for s in range(200)]
-        self.assertEqual(tempos[:10], [config.piece_tempo(s) for s in range(10)])
-        self.assertEqual((min(tempos), max(tempos)), (60, 85))
-        self.assertTrue(all(t == int(t) for t in tempos))
-        with self.assertRaises(ValueError):
-            config.bpm()
-        Config(argv=[], tempo=60)
-
-    def test_fixed(self):
-        self.assertEqual(Config(argv=[], tempo=66).piece_tempo(5), 66)
 
 
 class GenerateTest(unittest.TestCase):

@@ -29,7 +29,7 @@ from .samples import (
     midi_to_note,
 )
 from .theory import PitchSet
-from .voice import LFO_DEPTH_DB, LFO_PEAK_DB, SUSTAIN_MIN_BEATS, Voice, palette, piece_beats, resolve_pitch
+from .voice import SUSTAIN_MIN_BEATS, Voice, lfo_gain, palette, piece_beats, resolve_pitch
 
 __all__ = [
     "render",
@@ -525,8 +525,7 @@ def lfo_curve(v: Voice, frames: int) -> np.ndarray | None:
     # the sine changes over seconds: compute it every LFO_STEP frames and interpolate between
     coarse = np.arange(0, frames + LFO_STEP, LFO_STEP)
     dip = (1 - np.cos(2 * np.pi * ((coarse + 0.5) / frames * v.lfo + v.lfo_phase))) / 2
-    gains = 10 ** ((LFO_PEAK_DB - LFO_DEPTH_DB * dip) / 20)
-    return np.interp(np.arange(frames, dtype=np.float32), coarse, gains).astype(np.float32)
+    return np.interp(np.arange(frames, dtype=np.float32), coarse, lfo_gain(dip)).astype(np.float32)
 
 
 def _with_lfo(line: np.ndarray, v: Voice) -> np.ndarray:

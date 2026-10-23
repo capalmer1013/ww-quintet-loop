@@ -18,7 +18,7 @@ from functools import reduce
 from itertools import combinations
 
 from .config import Config
-from .pattern import _CONTINUE, STEP, _, event_paths, expand, leaves
+from .pattern import LEADING_HOLD, STEP, _, event_paths, expand, leaves, palette_index
 from .samples import (
     DYNAMICS,
     QUINTET,
@@ -29,12 +29,14 @@ from .samples import (
     note_to_midi,
     sustainable_frames,
 )
-from .theory import PitchSet
+from .theory import PitchSet, resolve_notes
 
 __all__ = [
     "Voice",
     "voice",
     "piece_beats",
+    "lfo_gain",
+    "piece_for_seed",
     "palette",
     "generate",
     "Profile",
@@ -187,6 +189,11 @@ PROFILES = {
 
 
 # --- voices ---
+def lfo_gain(dip):
+    """Volume-sine gain for a dip from 0 (loudest, LFO_PEAK_DB) to 1 (LFO_DEPTH_DB quieter); works on arrays."""
+    return 10 ** ((LFO_PEAK_DB - LFO_DEPTH_DB * dip) / 20)
+
+
 @dataclass(frozen=True)
 class Voice:
     """A pattern looping every `span` beats, at one dynamic, its volume on an optional slow sine."""
@@ -222,8 +229,7 @@ class Voice:
         """Volume-sine gain at a position through the piece (0-1): from LFO_PEAK_DB down by LFO_DEPTH_DB."""
         if not self.lfo:
             return 1.0
-        dip = (1 - math.cos(2 * math.pi * (position * self.lfo + self.lfo_phase))) / 2
-        return 10 ** ((LFO_PEAK_DB - LFO_DEPTH_DB * dip) / 20)
+        return lfo_gain((1 - math.cos(2 * math.pi * (position * self.lfo + self.lfo_phase))) / 2)
 
     def code(self) -> str:
         """The `voice(...)` call that recreates this voice, omitting defaults."""
@@ -489,7 +495,7 @@ def _onsets(v: Voice, pitch, total: Fraction) -> dict[Fraction, tuple[int | None
         (c * v.span + e.start, None if e.index is None else pitch(e.index), k)
         for c in range(int(total / v.span))
         for k, e in enumerate(one)
-        if e.index != _CONTINUE
+        if e.index != LEADING_HOLD
     ]
     return {t: (events[i - 1][1], p, k) for i, (t, p, k) in enumerate(events)}  # i-1 wraps: it loops
 
@@ -502,7 +508,7 @@ def _notes(v: Voice, pitch, total: Fraction) -> list[tuple[float, float, int, in
     for c in range(int(total / v.span)):
         for k, e in enumerate(one):
             start = c * v.span + e.start
-            if e.index == _CONTINUE:
+            if e.index == LEADING_HOLD:
                 if out:
                     held_start, _end, p, held_k = out[-1]
                     out[-1] = (held_start, start + e.beats, p, held_k)
@@ -621,7 +627,7 @@ def _rearticulate(v: Voice, inst: Instrument, notes: PitchSet, beat_seconds: Fra
         return limits[m]
 
     def renewed(index) -> str:
-        return f"{index if type(index) is int else STEP.fullmatch(index).group(1)}="
+        return f"{palette_index(index)}="
 
     current, held = None, Fraction(0)  # the sounding note and how long it has been held
     for path, _start, beats, leaf in leaves(pattern, v.span):
@@ -712,3 +718,10 @@ def generate(seed: int, notes: PitchSet, config: Config | None = None) -> dict[s
             for name, v in voices.items()
         }
     raise ValueError(f"seed {seed}: no piece fits in {config.max_seconds}s; raise --max-seconds")
+
+
+def piece_for_seed(seed: int, config: Config) -> tuple[PitchSet, dict[str, Voice]]:
+    """A seed's harmony and voices. Sets config.tempo to the seed's tempo first (when it's random)."""
+    config.tempo = config.piece_tempo(seed)
+    notes = resolve_notes(config.notes, seed)
+    return notes, generate(seed, notes, config)

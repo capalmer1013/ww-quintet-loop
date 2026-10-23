@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from quintet import QUINTET, Config, generate, resolve_notes
+from quintet import QUINTET, Config, piece_for_seed
 
 RECORDED = json.loads((Path(__file__).parent / "fixtures" / "generation.json").read_text())
 
@@ -15,9 +15,7 @@ RECORDED = json.loads((Path(__file__).parent / "fixtures" / "generation.json").r
 @pytest.mark.parametrize("piece", RECORDED, ids=lambda p: f"seed{p['seed']}")
 def test_generation_matches_the_recording(piece):
     config = Config(argv=[], tempo=0)
-    config.tempo = config.piece_tempo(piece["seed"])
+    notes, voices = piece_for_seed(piece["seed"], config)
     assert config.tempo == piece["tempo"]
-    notes = resolve_notes("random", piece["seed"])
     assert repr(notes) == piece["notes"]
-    voices = generate(piece["seed"], notes, config)
     assert {n: voices[n].code() for n in QUINTET} == piece["voices"]
