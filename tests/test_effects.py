@@ -1,3 +1,5 @@
+"""Staging, the hall and mastering: loop-safe, and each stage doing what it claims."""
+
 import math
 
 import numpy as np
@@ -32,10 +34,12 @@ def bursts(seconds: float) -> np.ndarray:
 
 
 def rms(x) -> float:
+    """Root mean square, in float64."""
     return float(np.sqrt(np.mean(np.square(x, dtype=np.float64))))
 
 
 def band_rms(x: np.ndarray, low: float, high: float) -> float:
+    """RMS of the spectrum's magnitudes between `low` and `high` Hz."""
     spectrum = np.fft.rfft(x, axis=-1)
     hz = np.fft.rfftfreq(x.shape[-1], 1 / SAMPLE_RATE)
     return rms(np.abs(spectrum[..., (hz >= low) & (hz < high)]))
@@ -92,7 +96,7 @@ def test_short_piece_folds_the_hall_seamlessly():
     np.testing.assert_allclose(once, many[:, -x.shape[1] :], atol=1e-4)
 
 
-def test_fast_length():
+def test_fast_length_is_small_and_has_only_factors_2_3_5():
     for n in (1, 7, 1000, 44100 * 150 + 1):
         m = _fast_length(n)
         assert m >= n and m < 2 * n + 1
@@ -137,7 +141,7 @@ def test_reflections_reach_the_nearer_wall_first():
     assert 0 < float(np.abs(left).max()) < 0.25  # quiet
 
 
-def test_saturate():
+def test_saturate_rounds_peaks_and_keeps_quiet_audio():
     x = np.linspace(-1, 1, 101, dtype=np.float32)
     assert saturate(x, 0) is x
     y = saturate(x, 0.3)
@@ -187,6 +191,7 @@ def test_finish_respects_flags():
     assert np.array_equal(finish(x, Config(argv=[], tempo=60, reverb=0, master=False), early), dry)  # no room
     roomy = finish(x, Config(argv=[], tempo=60, reverb=0.5, master=False), early, np.zeros_like(x))
     assert rms(roomy - dry) > 0  # the early reflections, with nothing sent to the hall
+    Config(argv=[], tempo=60)  # leave a default current config for later tests
 
 
 def test_master_saturation_still_hits_the_target():
@@ -194,4 +199,3 @@ def test_master_saturation_still_hits_the_target():
     clean, warm = master(x), master(x, saturation=0.3)
     assert abs(loudness_lufs(warm) - TARGET_LUFS) < 0.5
     assert rms(warm - clean) > 0
-    Config(argv=[], tempo=60)

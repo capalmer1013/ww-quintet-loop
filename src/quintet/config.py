@@ -15,7 +15,7 @@ from typing import ClassVar
 DEFAULT_SAMPLE_ROOT = Path(__file__).resolve().parents[2] / "samples"  # the repository's samples/
 TEMPO_RANGE = (60, 85)  # bpm, inclusive, when the tempo is random per seed
 TIME_SEEDS_PER_SECOND = 100  # --seeds now: the Unix time in hundredths of a second
-PIECE_NAME = "piece_{seed}"
+PIECE_NAME = "piece_{seed}"  # output file stem; also how --seeds now claims a seed
 
 
 @dataclass
@@ -27,7 +27,9 @@ class Config:
     """
 
     sample_root: Path = field(default=DEFAULT_SAMPLE_ROOT, metadata={"help": "directory of instrument sample folders"})
-    tempo: float = field(default=0.0, metadata={"help": "beats per minute; 0 = random 60-85 per seed"})
+    tempo: float = field(
+        default=0.0, metadata={"help": f"beats per minute; 0 = random {TEMPO_RANGE[0]}-{TEMPO_RANGE[1]} per seed"}
+    )
     notes: str = field(
         default="random",
         metadata={
@@ -73,6 +75,7 @@ class Config:
         Config._current = self
 
     def _apply_cli(self, argv: list[str]) -> None:
+        """Override fields from `argv`: one --flag per field (--flag/--no-flag for booleans)."""
         parser = argparse.ArgumentParser()
         for f in fields(self):
             current = getattr(self, f.name)
@@ -92,7 +95,7 @@ class Config:
         return cls._current or cls()
 
     def bpm(self) -> float:
-        """The tempo to render at; raises if it is still 0 (random), which main.py resolves per seed."""
+        """The tempo to render at; raises while it is still 0 (random), which the CLI resolves per seed."""
         if not self.tempo:
             raise ValueError("tempo 0 means random per seed: use piece_tempo(seed), or set Config(tempo=...)")
         return self.tempo
@@ -116,6 +119,7 @@ class Config:
             raise ValueError(f"--seeds must be A, A-B or now, got {self.seeds!r}") from None
 
     def _claimed_seeds(self) -> Iterator[int]:
+        """`count` consecutive free seeds from the clock, each claimed as it is reached."""
         if self.count < 1:
             raise ValueError(f"--count must be at least 1, got {self.count}")
         seed = self.claim_time_seed()

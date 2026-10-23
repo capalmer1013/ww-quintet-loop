@@ -1,4 +1,8 @@
-"""Pitch classes, chord and scale sets, intervals and the circle of fifths."""
+"""Pitch classes, chord and scale qualities, intervals and the circle of fifths.
+
+Piece files reach it through `from quintet import *` (`C.lydian`, `Fs.maj7s11`, `fourths(C.dom7, 3)`).
+voice.py builds palettes from a PitchSet's tones and steps along its parent scale.
+"""
 
 from __future__ import annotations
 
@@ -44,11 +48,12 @@ __all__ = [
     "M7",
 ]
 
-NAMES = ["C", "Cs", "D", "Ds", "E", "F", "Fs", "G", "Gs", "A", "As", "B"]
+# Pitch-class names for repr: sharps only, so a repr reads back through parse_set.
+_NAMES = ["C", "Cs", "D", "Ds", "E", "F", "Fs", "G", "Gs", "A", "As", "B"]
 
-# Semitones above the root.
-QUALITIES = {
-    # chords
+# --- Qualities: semitones above the root ---
+
+CHORDS = {
     "maj": (0, 4, 7),
     "min": (0, 3, 7),
     "dim": (0, 3, 6),
@@ -71,9 +76,11 @@ QUALITIES = {
     "dom9": (0, 2, 4, 7, 10),
     "dom7s11": (0, 4, 6, 7, 10),
     # quartal: stacked 4ths (a chain of 5ths), no 3rd anchoring the key
-    "quartal": (0, 2, 5, 7, 10),  # Bb F C G D: the root mid-stack, suspended
-    "quartal_bright": (0, 2, 4, 7, 9),  # C G D A E: the root at the bottom, open and bright
-    # scales
+    "quartal": (0, 2, 5, 7, 10),  # Bb F C G D: root mid-stack, suspended
+    "quartal_bright": (0, 2, 4, 7, 9),  # C G D A E: root at the bottom, open and bright
+}
+
+SCALES = {
     "major": (0, 2, 4, 5, 7, 9, 11),
     "minor": (0, 2, 3, 5, 7, 8, 10),
     "dorian": (0, 2, 3, 5, 7, 9, 10),
@@ -88,9 +95,12 @@ QUALITIES = {
     "lydian_dominant": (0, 2, 4, 6, 7, 9, 10),
 }
 
+QUALITIES = {**CHORDS, **SCALES}
 
-# Core tones (root, 3rd or sus, 5th, 7th or 6th) of chords with colour notes, or a quartal set's
-# 3rd-free stack; every other chord's tones are all core, and a scale's core is its triad.
+# --- Per-chord tables (scales derive both: their core is the triad, their parent is themselves) ---
+
+# Core tones (root, 3rd or sus, 5th, 7th or 6th) of chords that carry colour notes. Chords not
+# listed are all core.
 CORES = {
     "maj7s11": (0, 4, 7, 11),
     "maj9": (0, 4, 7, 11),
@@ -105,20 +115,7 @@ CORES = {
     "quartal": (0, 2, 5, 7),
     "quartal_bright": (0, 2, 7, 9),
 }
-SCALES = {
-    "major",
-    "minor",
-    "dorian",
-    "phrygian",
-    "lydian",
-    "mixolydian",
-    "locrian",
-    "harmonic_minor",
-    "pentatonic_major",
-    "pentatonic_minor",
-    "whole_tone",
-    "lydian_dominant",
-}
+
 # The scale whose extra steps are a chord's non-chord tones (passing tones, neighbours, suspensions).
 PARENT_SCALES = {
     "maj": "major",
@@ -145,9 +142,11 @@ PARENT_SCALES = {
     "quartal_bright": "lydian",
 }
 
-# Random harmony: lydian most, quartal sets for ambiguity, then the other bright modes; none has a
-# minor 3rd (dorian is off for now; minor, phrygian and locrian never). Colour comes from where
-# voices sit, not from crowding: see the spacing rule in voice.py.
+# --- Random harmony ---
+
+# Relative odds for resolve_notes (key order matters: it feeds rng.choices). Lydian most, the
+# quartal sets for ambiguity, then the other bright modes; none has a minor 3rd. Colour comes from
+# where voices sit, not from crowding (see the spacing rule in voice.py).
 HARMONY_WEIGHTS = {
     "lydian": 4,
     "quartal": 2,
@@ -155,6 +154,11 @@ HARMONY_WEIGHTS = {
     "mixolydian": 1.5,
     "major": 1,
 }
+
+
+def _fifth(intervals: tuple[int, ...]) -> int | None:
+    """The set's 5th: perfect, else diminished, else augmented; None if it has none."""
+    return next((i for i in (7, 6, 8) if i in intervals), None)
 
 
 class PitchClass(int):
@@ -170,14 +174,12 @@ class PitchClass(int):
         return PitchClass(int(self) - int(semitones))
 
     def __repr__(self) -> str:
-        return NAMES[self]
+        return _NAMES[self]
 
     __str__ = __repr__
 
     def __getattr__(self, quality: str) -> PitchSet:
-        if quality in QUALITIES:
-            return PitchSet(self, quality)
-        raise AttributeError(f"unknown quality {quality!r}; valid: {', '.join(QUALITIES)}")
+        return PitchSet(self, quality)  # raises AttributeError for an unknown quality
 
     def up(self, interval: int) -> PitchClass:
         return self + interval
@@ -195,6 +197,8 @@ class PitchClass(int):
 
 @dataclass(frozen=True)
 class PitchSet:
+    """A quality on a root, e.g. C.maj7s11. Its repr reads back through parse_set."""
+
     root: PitchClass
     quality: str
 
@@ -227,13 +231,12 @@ class PitchSet:
 
     @property
     def core(self) -> list[PitchClass]:
-        """Root, 3rd (or sus), 5th and 7th/6th: the tones without colour notes (9ths, 11ths, ...)."""
+        """The tones without colour notes (9ths, 11ths, ...); a scale's core is its triad."""
         if self.quality in CORES:
             return [self.root + i for i in CORES[self.quality]]
         if self.quality in SCALES:
             third = 4 if 4 in self.intervals else 3
-            fifth = next((i for i in (7, 6, 8) if i in self.intervals), 7)
-            return [self.root + i for i in (0, third, fifth) if i in self.intervals]
+            return [self.root + i for i in (0, third, _fifth(self.intervals)) if i in self.intervals]
         return self.pitch_classes
 
     @property
@@ -246,7 +249,7 @@ class PitchSet:
     @property
     def bass(self) -> list[PitchClass]:
         """Root and 5th (or the diminished/augmented 5th the set has instead)."""
-        fifth = next((i for i in (7, 6, 8) if i in self.intervals), None)
+        fifth = _fifth(self.intervals)
         return [self.root] if fifth is None else [self.root, self.root + fifth]
 
     def pitches(self, low: int, high: int, classes=None) -> list[int]:
@@ -265,6 +268,8 @@ def fourths(start: PitchClass | PitchSet, n: int) -> list:
     return [start.fourths(i) for i in range(n)]
 
 
+# --- Names for piece files ---
+
 C = PitchClass(0)
 Cs = Db = PitchClass(1)
 D = PitchClass(2)
@@ -278,6 +283,7 @@ A = PitchClass(9)
 As = Bb = PitchClass(10)
 B = PitchClass(11)
 
+# Intervals in semitones.
 m2, M2, m3, M3, P4, TT, P5, m6, M6, m7, M7 = range(1, 12)
 
 _ROOTS = {
@@ -286,25 +292,36 @@ _ROOTS = {
 }
 
 
-def resolve_notes(spec: str, seed: int) -> PitchSet:
-    """The note set for a seed. spec is 'random' (random key and chord), '<root>.random' (random
-    chord on that root) or '<root>.<quality>'. The harmony has its own random stream per seed, so
-    fixing the tempo (or anything else) doesn't change which chord a seed gets."""
-    if spec == "random":
-        spec = "_.random"
-    root, _, quality = spec.partition(".")
-    if quality != "random":
-        return parse_set(spec)
-    rng = random.Random(f"{seed}:harmony")
-    pc = PitchClass(rng.randrange(12)) if root == "_" else parse_set(f"{root}.maj").root
-    return PitchSet(pc, rng.choices(list(HARMONY_WEIGHTS), list(HARMONY_WEIGHTS.values()))[0])
+# --- Parsing ---
+
+
+def _root(name: str, text: str) -> PitchClass:
+    if name not in _ROOTS:
+        raise ValueError(f"unknown root {name!r} in {text!r}; valid: {', '.join(_ROOTS)}")
+    return _ROOTS[name]
 
 
 def parse_set(text: str) -> PitchSet:
     """'C.maj7s11' -> C.maj7s11."""
-    root, _, quality = text.partition(".")
-    if root not in _ROOTS:
-        raise ValueError(f"unknown root {root!r} in {text!r}; valid: {', '.join(_ROOTS)}")
+    root, _sep, quality = text.partition(".")
+    pc = _root(root, text)
     if quality not in QUALITIES:
         raise ValueError(f"unknown quality {quality!r} in {text!r}; valid: {', '.join(QUALITIES)}")
-    return PitchSet(_ROOTS[root], quality)
+    return PitchSet(pc, quality)
+
+
+def resolve_notes(spec: str, seed: int) -> PitchSet:
+    """The note set for a seed: spec is 'random' (random root and quality), '<root>.random' (random
+    quality on that root) or '<root>.<quality>'.
+
+    The harmony draws from its own random stream per seed, so fixing the tempo (or anything else)
+    doesn't change which harmony a seed gets.
+    """
+    if spec == "random":
+        spec = "_.random"
+    root, _sep, quality = spec.partition(".")
+    if quality != "random":
+        return parse_set(spec)
+    rng = random.Random(f"{seed}:harmony")
+    pc = PitchClass(rng.randrange(12)) if root == "_" else _root(root, spec)
+    return PitchSet(pc, rng.choices(list(HARMONY_WEIGHTS), list(HARMONY_WEIGHTS.values()))[0])

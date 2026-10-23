@@ -36,6 +36,7 @@ from quintet.render import (
     LEVEL_REF_DB,
     PAN,
     STAGE_DEPTH,
+    retuned,
 )
 from quintet.samples import DYNAMICS
 from quintet.voice import LFO_PEAK_DB
@@ -274,10 +275,6 @@ class RenderTest(unittest.TestCase):
         self.assertEqual((out / "orig.wav").read_bytes(), original)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class HumanizeTest(unittest.TestCase):
     def setUp(self):
         Config(argv=[], tempo=60)
@@ -346,8 +343,6 @@ class HumanizeTest(unittest.TestCase):
 
 class IntonationTest(unittest.TestCase):
     def test_retuned_shifts_pitch_by_cents(self):
-        from quintet.render import retuned
-
         t = np.arange(SAMPLE_RATE * 2) / SAMPLE_RATE
         tone = np.sin(2 * np.pi * 440.0 * t).astype(np.float32)
         for cents in (4.0, -4.0):
@@ -357,7 +352,7 @@ class IntonationTest(unittest.TestCase):
             self.assertAlmostEqual(1200 * np.log2(peak / 440.0), cents, delta=0.3)
         self.assertIs(retuned(tone, 0.0), tone)
 
-    def test_off_by_default_and_deterministic_when_on(self):
+    def test_on_by_default_and_deterministic(self):
         self.assertTrue(Config(argv=[], tempo=60).intonation)
         self.assertFalse(Config(argv=["--no-intonation"], tempo=60).intonation)
 
@@ -383,3 +378,7 @@ class ConcertPitchTest(unittest.TestCase):
             return np.argmax(spectrum) * SAMPLE_RATE / (1 << 22)
 
         self.assertAlmostEqual(1200 * np.log2(peak(432.0) / peak(440.0)), 1200 * np.log2(432 / 440), delta=0.5)
+
+
+if __name__ == "__main__":
+    unittest.main()

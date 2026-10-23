@@ -1,87 +1,137 @@
 # ww-quintet-loop
 
-Generate small phasing pieces for woodwind quintet (flute, oboe, clarinet, horn, bassoon). Each
-voice cycles its own pattern of notes, drawn from one note set, over its own number of beats, all
-on one shared eighth-note pulse. Loops of different lengths drift in and out of phase to make a
-slowly shifting chord cloud. Each piece lasts exactly one full
-phase cycle, so it loops seamlessly.
+Generates short phasing pieces for woodwind quintet (flute, oboe, clarinet, horn, bassoon) and
+renders them to WAV from a bundled sample library. Each voice loops its own pattern over its own
+length, so the loops drift in and out of phase, Reich-style, into a slowly shifting chord cloud.
+A piece lasts exactly one full phase cycle, so it loops seamlessly.
 
-- `src/quintet/`: the package: theory, patterns, voices, sample loading, rendering and effects, plus
-  the `quintet` command.
-- `samples/`: the sample library.
-- `tests/`, `docs/`: tests and design notes.
+## Setup
 
-It's a [uv](https://docs.astral.sh/uv/) project for Python 3.10–3.13. Rendering uses numpy, effects
-use [pedalboard](https://github.com/spotify/pedalboard), and loudness uses
-[pyloudnorm](https://github.com/csteinmetz1/pyloudnorm).
+- **Requires** [uv](https://docs.astral.sh/uv/). Python 3.10–3.13 is supported; uv uses 3.12
+  (`.python-version`).
+- **Install:** `make sync`
+- **Samples** are bundled in `samples/<instrument>/notes/<dynamic>/` (44.1 kHz mono WAVs). Point
+  `--sample-root` elsewhere to use another copy.
+- Run `make` (or `make help`) to list every target and flag.
 
-## Running
-
-Install once:
+## Usage
 
 ```bash
-make sync
+make run                                          # one new piece, seeded from the clock
+make run ARGS="--seeds 1000-1010 --code"          # seeds 1000-1009, each with its .py file
+make run ARGS="--notes D.quartal --tempo 70"      # a fixed harmony and tempo
+make lush ARGS="--count 5"                        # five pieces with the lush preset
+make loop FILE=out/piece_1000.wav MINUTES=60      # an hour of one piece, gapless
 ```
 
-Then `make run` on its own makes one new piece, seeded from the clock. Or generate a range of seeds:
+Each piece prints its seed, harmony, tempo, length and output files.
 
-```bash
-make run ARGS="--seeds 1000-1010 --code"
-```
-
-This writes `out/piece_1000.wav` … `out/piece_1009.wav`, plus a `.py` file for each piece. Each seed
-picks its own key, chord and tempo; each printed line shows them.
-Run `make` to list the targets and every flag.
-
-Presets for common jobs (each takes `ARGS` too, and later flags win):
-
-| Command | Makes |
+| Target | Does |
 |---|---|
-| `make batch N=10` | N new pieces in one run (one startup instead of N) |
-| `make lush` | the warmest sound: a little more reverb, a bigger hall |
-| `make daw` | a piece plus per-instrument stems and its piece file, for mixing elsewhere |
-| `make raw` | humanizing, intonation, mastering and reverb off, for A/B comparisons |
+| `make run` | Generate pieces; flags go in `ARGS="..."` |
+| `make batch N=10` | N new pieces in one run (default 10) |
+| `make lush` | Warmest sound: `--reverb 1.0 --room 1.0` |
+| `make daw` | Also write per-instrument stems and a piece file (`--stems --code`) |
+| `make raw` | Humanizing, intonation, mastering and reverb off, for A/B comparisons |
+| `make loop FILE=… MINUTES=60` | Repeat a piece into one long `<name>_loop.flac` (most players leave a gap when looping a file) |
+| `make seam FILE=…` | Write `<name>_seam.wav`: the last 10 s then the first 10 s, to hear the loop point |
 
-For example, `make lush ARGS="--count 5"` makes five lush pieces.
+- Presets take `ARGS` too; later flags win.
+- `loop` and `seam` also print how clean the join is.
 
-| Flag | Default | Meaning |
+## Configuration
+
+Every field of `Config` (`src/quintet/config.py`) is a flag. Booleans also have a `--no-…` form.
+
+| Flag | Default | Description |
 |---|---|---|
-| `--notes` | `random` | `random` (key and chord), `C.random` (chord on that key) or a fixed set like `C.maj9`, `Fs.maj7s11`, `Bb.lydian` |
-| `--seeds` | `now` | Seed `A`, a range `A-B` with `B` excluded, or `now`: one piece seeded from the current Unix time in hundredths of a second |
-| `--count` | `1` | With `--seeds now`: how many new pieces to make (each gets the next free clock seed) |
-| `--tempo` | `0` | Beats per minute; `0` = a whole-number tempo from 60 to 85, random per seed |
-| `--reverb` | `0.75` | Hall reverb amount (`0` = dry) |
-| `--room` | `0.9` | Hall size, 0–1 (`0.9` ≈ 2.85 s decay) |
-| `--reverb-ir FILE` | none | An impulse response WAV of a real space (any rate, mono or stereo), used instead of the built-in hall (see Reverb) |
-| `--humanize` / `--no-humanize` | on | Play it like people: timing, breaths, varied takes and levels (see Performance) |
-| `--intonation` / `--no-intonation` | on | Each note tuned a few cents off, differently every time (see Performance) |
-| `--a4 HZ` | 440 | Concert pitch. The samples are recorded at A440, so the default plays them as recorded; `--a4 432` plays everything about 32 cents flat |
-| `--master` / `--no-master` | on | Phone-friendly EQ, compression, −13 LUFS loudness and −3 dBFS peaks (see Mastering) |
-| `--saturation` | `0.3` | Gentle tape-style warmth when mastering (`0` = clean) |
+| `--seeds` | `now` | `A`, a range `A-B` (B excluded), or `now`: one seed from the clock (Unix time in 1/100 s) |
+| `--count` | `1` | With `--seeds now`: how many new pieces |
+| `--notes` | `random` | The note set; see below |
+| `--tempo` | `0` | BPM; `0` = a whole-number tempo from 60 to 85, random per seed |
 | `--max-seconds` | `480` | Longest allowed piece (one full phase cycle) |
+| `--reverb` | `0.75` | Hall amount; `0` = dry (no hall, no early reflections) |
+| `--room` | `0.9` | Hall size 0–1 (`0.9` ≈ 2.85 s decay, `1` ≈ 3.1 s) |
+| `--reverb-ir` | none | Impulse response WAV of a real space (any rate, mono or stereo) instead of the built-in hall; `--room` is then ignored |
+| `--master` | on | Phone-friendly EQ, compression, −13 LUFS, −3 dBFS peaks |
+| `--saturation` | `0.3` | Tape-style warmth when mastering; `0` = clean |
+| `--humanize` | on | Timing, breaths, varied takes and levels |
+| `--intonation` | on | Each note tuned a few cents off, differently each time |
+| `--a4` | `440` | Concert pitch in Hz; samples are A440, so `432` is about 32 cents flat |
+| `--stems` | off | Also write one mono WAV per instrument |
+| `--code` | off | Also write a `.py` that rebuilds each piece |
 | `--output-dir` | `out` | Where files are written |
-| `--stems` | off | Also write `piece_<seed>_<instrument>.wav` (mono, 32-bit float, dry and unmastered) for each voice |
-| `--code` | off | Also write `piece_<seed>.py`, which reproduces the piece |
-| `--sample-root` | `samples/` | Sample library location |
+| `--sample-root` | repo's `samples/` | Sample library location |
 
-Flags override any defaults set in code. Every field on `quintet.Config` is a flag automatically.
-`make run` wraps `uv run quintet`, which you can also call directly.
+**`--notes` forms**
 
-### Listening on loop
+- `random`: a random key (all 12) and a random harmony.
+- `<root>.random`, e.g. `D.random`: a random harmony on that root.
+- `<root>.<quality>`, e.g. `C.lydian`, `Fs.maj7s11`, `Bb.quartal`. Roots: `C Cs Db D Ds Eb E F Fs
+  Gb G Gs Ab A As Bb B` (`s` = sharp).
 
-Each file's last frame runs straight into its first, but most players (VLC 3 included) restart the
-file to loop it, which leaves a short gap. To avoid that, repeat the piece into one long file:
+**Harmonies `random` picks from** (by weight; `HARMONY_WEIGHTS` in `src/quintet/theory.py`):
 
-```bash
-make loop FILE=out/piece_1000.wav MINUTES=60
-```
+| Harmony | On C | Weight |
+|---|---|---|
+| `lydian` | C D E F♯ G A B | 4 |
+| `quartal` | C D F G B♭ (stacked 4ths, root mid-stack) | 2 |
+| `quartal_bright` | C D E G A (stacked 4ths, root at the bottom) | 2 |
+| `mixolydian` | C D E F G A B♭ | 1.5 |
+| `major` | C D E F G A B | 1 |
 
-This writes `out/piece_1000_loop.flac`. To hear just the join, `make seam FILE=out/piece_1000.wav`
-writes the piece's last 10 s followed by its first 10 s. Both also print whether the join is clean.
+**Also usable by name** (`QUALITIES` in `src/quintet/theory.py`):
+
+- Chords: `maj min dim aug sus2 sus4 dom7 maj7 min7 dim7 m7b5 maj7s11`
+- Extended: `maj9 maj69 min9 min11 sus9 min69 dom9 dom7s11`
+- Scales: `minor dorian phrygian locrian harmonic_minor pentatonic_major pentatonic_minor
+  whole_tone lydian_dominant`
+
+The harmony and the tempo come from separate random streams per seed, so fixing one doesn't
+change what a seed picks for the other.
+
+## Output files
+
+All in `--output-dir` (default `out/`), 44.1 kHz:
+
+| File | When | Format |
+|---|---|---|
+| `piece_<seed>.wav` | always | Stereo; 16-bit when mastered, 32-bit float with `--no-master` |
+| `piece_<seed>_<instrument>.wav` | `--stems` | Mono, 32-bit float, dry (no hall) and unmastered |
+| `piece_<seed>.py` | `--code` | A script that rebuilds the piece |
+
+- Unmastered files sit well below full scale (levelling only ever turns samples down); turn them
+  up where you play or mix them.
+
+## How it works
+
+- **Loops and phasing:** each voice repeats a pattern on a shared eighth-note pulse, with loops of
+  8–13 s; at least 3 different loop lengths per piece, and the piece runs to their lowest common multiple.
+- **Harmony:** one note set per piece; each voice draws only from it, within its own register band.
+- **Voicing:** bassoon on root and 5th, horn on core tones, colour notes (9ths, 11ths) up top; a soft
+  spacing rule and no parallel 5ths or octaves.
+- **Lines:** written in each instrument's idiom, with passing tones, neighbours, suspensions, rests,
+  legato phrasing and slow per-voice volume sines.
+- **Sample levelling:** every recording is scaled (only ever down) to a target level per dynamic;
+  all instruments stay at or below `mp` recordings to blend.
+- **Performance:** small timing offsets, breaths, rotating takes, ±1 dB level and a few cents of
+  intonation, all seeded so renders are reproducible.
+- **Staging:** mild stereo seating, stage depth (further back is later, darker, wetter) and early
+  reflections.
+- **Hall:** circular convolution with a decaying-noise hall (or `--reverb-ir`), 25 ms pre-delay,
+  filtered to 250 Hz–7 kHz, so its tail wraps over the loop point.
+- **Mastering:** 60 Hz high-pass, −3 dB at 300 Hz, +3.5 dB at 3.5 kHz, +1.5 dB shelf at 10 kHz,
+  tanh saturation, 3:1 compression from 10 dB below target, −13 LUFS, −3 dBFS limiter.
+- **Seamless loops:** every stateful stage first runs over the piece's own ending, so the loop
+  point sounds like the rest.
+
+Full design and the reasoning behind each choice:
+[`docs/superpowers/specs/2026-10-20-phasing-quintet-design.md`](docs/superpowers/specs/2026-10-20-phasing-quintet-design.md).
 
 ## Piece files
 
-With `--code`, each piece is also written as a script:
+`--code` writes `piece_<seed>.py`, which rebuilds the identical WAV. Edit it to change a piece by
+hand:
 
 ```python
 from quintet import *
@@ -96,399 +146,21 @@ render('piece_2000', C.lydian,
 )
 ```
 
-- Running `uv run python out/piece_2000.py` rebuilds the identical WAV.
-- Piece files from before the move to the `quintet` package (`from utils import *`) no longer run.
-  Regenerate them with the same seeds: the notes come out the same.
-- Flags still apply, e.g. `--stems` or `--tempo 90`.
-- Edit the file to change a piece by hand.
-
-## Voices
-
-`voice(pattern, beats, drift=0, dynamic="p", lfo=0, lfo_phase=0.0)` repeats `pattern` every `beats` beats.
-
-- **Cycle-length phasing:** give voices different `beats` (3 against 4 against 7).
-- **Different note counts in the same time:** 5 slots over `beats=4` against 4 over 4 gives 5:4.
-- **Reich-style drift:** `drift=k` shortens the cycle to `beats * k/(k+1)`. The voice slowly pulls
-  ahead and realigns with an undrifted partner after `k+1` of its own cycles.
-- **Dynamic:** one of `pp p mp mf f ff`, setting the voice's level.
-  - Recordings are capped per instrument (`MAX_LAYERS` in `src/quintet/samples.py`): every
-    instrument goes up to `mp`, so the quintet blends instead of turning bright or brassy. A louder
-    dynamic is reached by levelling (gain), keeping the softer tone.
-  - A note without that recording falls back to the nearest softer one.
-  - **Gap fill** (`GAP_FILL`): the oboe has nothing at or below `mp` for C5–D♯5, and the horn for
-    C♯5–F5, both inside their sweet ranges. Those notes borrow the nearest louder recording (oboe
-    `mf`, horn `ff`), levelled down to the dynamic played, instead of going unplayed.
-- **Volume sine:** `lfo=k` makes the voice's volume ebb and flow on a slow sine, `k` cycles over the
-  whole piece, starting at `lfo_phase` (0 = loudest).
-  - It swings 12 dB, from −4 dB at its loudest down to −16 dB, so a voice at its quietest is a
-    quarter as loud as at its peak, and the peaks don't get too loud.
-  - Generated voices get periods of about 10–30 s, chosen not to line up with the voice's own
-    cycle, so each repeat of a pattern sounds a little different.
-  - Every generated sine starts at its quietest. A piece opens softly with all voices at −16 dB,
-    and, as each sine fits a whole number of times, eases back to that level by the end, so the
-    loop point matches.
-  - It's whole cycles over the piece, so loops stay seamless.
-  - `lfo=0` keeps the volume steady.
-- **Piece length:** the lowest common multiple of the five cycle lengths, so every voice realigns
-  exactly at the end.
-- **Metric accents:** stronger beats are slightly louder. The first note of any group is strongest
-  (the loop's downbeat most of all, about +1.75 dB). In a longer group, the group start nearest the
-  middle is next, like beat 3 of 4; then other group starts; then off-beats. Each level of nesting
-  counts half as much.
-- **Sounding:** voices are monophonic, so every note lasts until the next event starts.
-  - A sample longer than the note is cut, with a fade of 10% of the note (10–150 ms).
-  - A note longer than its sample uses the recording that is actually longest (measured from the
-    file; the lengths in the file names are only nominal).
-  - If it's still too short, the sample's steady middle repeats with 100 ms crossfades and its
-    natural release ends the note. This only happens if that middle is at least 0.8 s long and
-    needs at most 3 repeats. Otherwise the sample plays once and the rest of the note is silent,
-    rather than stuttering.
-  - Generation avoids those gaps: a note held longer than its instrument can sustain on that pitch
-    is re-articulated (the hold becomes a repeated note on the same pitch).
-  - **Long notes** (1.5 s or more) swell `<>`. They start from about −30 dB and stay quiet for the
-    first fifth or so (still −11 dB 20% of the way in), then bloom into the voice's full level 40% of
-    the way through, and die away. They never go above the voice's level.
-  - **Shorter notes** fade in over 0.15 of a beat (150 ms at 60 bpm), so slower tempos get softer
-    attacks.
-
-## Legato
-
-Each voice plays in phrases: runs of notes with no rest between them. A phrase may run over the
-loop point, so a voice with no rests is one long phrase.
-
-- **Only the phrase's first note is articulated.** It plays its recording from the start, with the
-  natural tongued attack and a soft fade-in.
-- **Every later note is joined** (`_note_audio` in `src/quintet/render.py`):
-  - **A new pitch:** the note skips its recording's attack (up to where it reaches full level, so a
-    slow-blooming flute is handled too) and crossfades from the previous note over 80 ms. The line
-    moves from pitch to pitch without a re-attack.
-  - **The same pitch again:** the same, but the old note fades out a little sooner and the new one
-    comes in a little later, so the repeat is heard as a gentle "du" (about a 9 dB, 40 ms dip), not
-    tongued.
-  - **A renewal (`"3="`):** the same recording continues from its steady middle, phase-aligned by
-    cross-correlation, so the note simply carries on.
-- **Long notes in a phrase** swell `<>` from and back to about −9 dB (the line's level) instead of
-  near silence. Only a phrase's first note grows from silence.
-- **Note choice:** a note joined into the next one uses a recording long enough to still be
-  sustaining, not releasing, when the next note arrives.
-
-## Performance
-
-On by default (`--no-humanize` turns it off), so the quintet plays rather than sequences. The
-constants are at the top of `src/quintet/render.py`.
-
-- **Timing:** each note lands a few milliseconds off the grid (±10 ms typical, ±25 ms at most),
-  differently every time round.
-- **Ensemble:** each instrument sits slightly ahead of or behind the beat: the flute 6 ms early, the
-  horn 10 ms late, which is how horns speak. So the five never attack in exactly the same instant.
-- **Phrase ends:** a phrase's last note leans a little into the rest after it.
-- **Space after long tones:** a tone held 3 beats or more that runs straight into another note
-  ends 0.3–0.6 s early, so the next note starts fresh after a short pause.
-- **Breathing:** a voice that plays on without a rest breathes every 4–8 s, a 150–300 ms gap at a
-  change of note (never inside a renewed held tone). The next note starts a fresh, articulated
-  phrase.
-- **Takes:** repeats rotate between the library's different recordings of the same note, so no two
-  are identical.
-- **Level:** each note's level varies by up to ±1 dB.
-- **Intonation** (on by default; `--no-intonation` turns it off): each note is tuned slightly off, typically ±2
-  cents and never more than ±4, differently every time. That makes unisons and octaves between
-  instruments shimmer instead of sitting perfectly still. A renewed held tone keeps its note's
-  tuning.
-- **Reproducible and seamless:** everything is seeded from the voice itself, so renders are
-  reproducible (piece files still rebuild the same WAV), and it repeats with the piece, so loops
-  stay seamless.
-
-## Mix
-
-Each voice sits at a fixed spot in a mild stereo seating (`PAN` in `src/quintet/render.py`, −1 left to
-+1 right):
-
-| flute | clarinet | bassoon | horn | oboe |
-|---|---|---|---|---|
-| −0.35 | −0.2 | −0.05 | +0.1 | +0.35 |
-
-The two highest voices are spread apart, and the horn and bassoon sit near the middle.
-
-Each voice also sits at a depth on the stage (`STAGE_DEPTH`, 0 = front row, 1 = back):
-
-| flute | oboe | clarinet | bassoon | horn |
-|---|---|---|---|---|
-| 0 | 0 | 0.4 | 0.6 | 1 |
-
-- **Further back is later, darker and wetter:** up to 6 ms later (about 2 m), a high shelf of up
-  to −4 dB above 4 kHz, and up to 4 dB more sent to the hall.
-- **The horn is at the back**, as its bell faces away from the audience. It's trimmed only 2 dB
-  (`INSTRUMENT_TRIM_DB`), so it still carries without dominating.
-- **The oboe is darkened** (`VOICE_EQ` in `src/quintet/effects.py`), so its nasal, reedy tone
-  doesn't poke through the blend: −3 dB at 1.2 kHz and at 3 kHz (the latter offsetting mastering's
-  presence boost) and a −3 dB high shelf from 6 kHz. Its stem is darkened too.
-- **Early reflections:** five quiet echoes per voice off alternating side walls, 9–38 ms after the
-  direct sound and darkened above 6 kHz. A voice panned towards a wall hears it sooner, and one
-  further back hears them closer together. They are part of the room, so `--reverb 0` drops them.
-
-## Mastering
-
-On by default (`--no-master` turns it off), in `src/quintet/effects.py`, using pedalboard:
-
-- **EQ:** a 12 dB/octave high-pass at 60 Hz (rumble), −3 dB at 300 Hz (boxiness), +3.5 dB at
-  3.5 kHz, where phone speakers and ears are most sensitive, and a +1.5 dB high shelf at 10 kHz for
-  air.
-- **Saturation:** `tanh`-shaped, like tape. Quiet passages pass through unchanged and peaks round
-  off with a little warmth. `--saturation` sets how much (`0` = clean).
-- **Compression:** 3:1, from 10 dB below the target loudness, so quiet passages survive small
-  speakers and the loudness stays even (about 2–4 LU of range).
-- **Loudness:** every piece is normalised to −13 LUFS, measured properly with pyloudnorm, into a
-  −3 dBFS limiter. That's loud enough that the peaks reach the limiter (about −3 to −4 dBFS), with
-  headroom left for lossy encoding.
-- **Seamless loops:** each stage first runs over the piece's own ending, so the loop point sounds
-  exactly as it does when the file repeats.
-
-## Reverb
-
-The staged mix is convolved with a hall, in `src/quintet/effects.py`:
-
-- **The built-in hall** is decaying noise, with each octave decaying at its own rate: lows ring a
-  little longer and highs die first, as in a real hall. `--room` sets its size (`0.9` ≈ 2.85 s, `1` ≈ 3.1 s).
-- **A recorded space:** `--reverb-ir FILE` uses an impulse response WAV instead, at any sample rate,
-  mono or stereo (free ones are in the [OpenAIR library](https://www.openair.hosted.york.ac.uk/)).
-  `--room` is then ignored.
-- **Pre-delay:** the hall starts 25 ms after the direct sound, so attacks stay clear.
-- **The hall's own EQ:** 12 dB/octave cuts below 250 Hz and above 7 kHz, so it never muddies the
-  bassoon and horn or hisses.
-- **Amount:** `--reverb` sets the wet level. Every space is scaled to the same energy, so an amount
-  means the same for any of them; the scale is set so an amount is about as wet as it was with the
-  earlier algorithmic hall.
-- **Seamless loops:** the convolution is circular: the tail rings over the loop point exactly as it
-  does when the file repeats.
-- **Stems stay dry**, for mixing elsewhere.
-- `--reverb 0` gives the dry stage: no hall and no early reflections.
-
-## Patterns
-
-| Element | Meaning |
-|---|---|
-| `1`, `2`, … | The voice's palette notes, lowest first. Numbers past the end wrap round |
-| `"3+"`, `"3-"` | Palette note 3 moved one step up/down the chord's parent scale (a non-chord tone) |
-| `"3="` | Note 3 again, renewed seamlessly (generation writes this where a held note outlasts its recording) |
-| `0` | Rest |
-| `_` | Hold the previous note (or rest) through this slot |
-| `[...]` | Divide this slot equally among its elements, to any depth |
-
-- `[1, [2, 3], _, 0]` over 4 beats: note 1, then two half-beat notes, then 2 beats of hold on the
-  last note (3), then a rest.
-- A leading `_` continues the previous cycle's last note.
-- `[1, ["3-", 3], 5]`: note 1, then a passing tone stepping up into note 3, then note 5.
-
-## Harmony
-
-With `--notes random`, each seed picks a key (all 12) and a harmony: mostly lydian, then quartal
-sets for tonal ambiguity, then the other bright modes. None has a minor 3rd: dorian is off for
-now.
-
-| Harmony | On C | Weight |
-|---|---|---|
-| `lydian` | C D E F♯ G A B | 4 |
-| `quartal` | C D F G B♭: the 4ths stack B♭–F–C–G–D, root mid-stack (suspended) | 2 |
-| `quartal_bright` | C D E G A: the 4ths stack C–G–D–A–E, root at the bottom (open, bright) | 2 |
-| `mixolydian` | C D E F G A B♭ | 1.5 |
-| `major` | C D E F G A B | 1 |
-
-- **Voicing:** the bassoon plays the root and 5th. In a mode the horn plays its triad and the
-  clarinet, oboe and flute all seven notes.
-- **Quartal voicing:** in a quartal set the horn keeps to the stack's 4ths and 5ths, never a 3rd
-  (root, 2nd, 4th, 5th in `quartal`; root, 2nd, 5th, 6th in `quartal_bright`). The 3rd of
-  `quartal_bright` only appears up top, as colour. Passing and neighbour notes come from
-  mixolydian and lydian respectively, so `quartal_bright` picks up an occasional F♯.
-- **Colour from spacing, not crowding:** see the spacing rule below.
-- **Fixed harmonies:** e.g. `--notes D.quartal`, `--notes D.lydian`, or a chord like
-  `--notes C.maj9` or `--notes Fs.maj7s11`. Dorian, minor and phrygian are still there by name.
-- **Separate streams:** the harmony and the tempo each come from their own random stream for the
-  seed. Fixing one (e.g. `--tempo 60`) doesn't change what the seed picks for the other.
-- **Weights:** `HARMONY_WEIGHTS` in `src/quintet/theory.py` sets them.
-
-## Spacing between voices
-
-Notes that sound at the same time follow a soft spacing rule based on the orchestration "low
-interval limits": the tighter or more dissonant an interval, the higher it has to sit to sound
-clear rather than muddy.
-
-| Interval | Lower note at or above |
-|---|---|
-| minor 2nd | C5 |
-| major 2nd | G4 |
-| tritone | C4 |
-| minor 3rd, major 7th | C3 |
-| major 3rd | B♭2 |
-| perfect 4th | A2 |
-| minor and major 6ths, minor 7th | F2 |
-| perfect 5th | B♭1 |
-
-- **Wide intervals:** an interval wider than an octave counts as its smaller form with the limit an
-  octave lower, so a minor 9th is fine from C4. Dissonances end up spread open: in generated
-  pieces, minor and major 2nds sound together as 9ths or wider about 30–50 times as often as they
-  sound within an octave.
-- **Soft rule:** generation nudges notes to fix clashes (keeping parallel 5ths/octaves at zero) but
-  tolerates up to 1.5 too-close moments per minute.
-- **Where:** `SPACING_FLOOR` and `CLASHES_PER_MINUTE` in `src/quintet/voice.py`; `clashes(voices,
-  notes)` lists them for any piece.
-
-## Non-chord tones and voice leading
-
-Each chord has a parent scale that supplies its non-chord tones (`PitchSet.scale`):
-
-| Chords | Parent scale |
-|---|---|
-| `maj9`, `maj69` | major |
-| `maj7s11` | lydian |
-| `min9`, `min11`, `min69` | dorian |
-| `sus9`, `dom9` | mixolydian |
-| `dom7s11` | lydian dominant |
-
-Generated lines use them in three classical figures. Each instrument's profile sets how often
-(`passing`, `neighbour`, `suspension`):
-
-- **Passing tone:** a skip of a 3rd between chord tones is filled with the scale step between them
-  on the weak half of the slot, e.g. `[2, "2+"]` then 3.
-- **Neighbour tone:** a step away and straight back, `[3, "3+"]` then 3.
-- **Suspension:** a sustained note starts on the step above a chord tone, is held, then resolves
-  down by step onto it, `["3+", _, _, 3, _, _]`. This is mostly the horn, oboe and clarinet. With
-  one chord per piece there's no preparation in strict classical terms; it sounds like a held
-  appoggiatura.
-
-Generated pieces have no parallel perfect 5ths or octaves:
-
-- **The rule:** no two voices may move at the same moment from a 5th, octave or unison apart into
-  the same interval again, whether in similar or contrary motion.
-- **Enforcement:** `generate` checks the whole looping timeline. It nudges offending notes to a
-  neighbouring palette note, never touching a non-chord-tone figure, and moves on to another
-  candidate if the parallels can't be cleared.
-- **Checking a piece:** `parallels(voices, notes)` lists any parallels in a set of voices, including
-  hand-written ones.
-
-## Palettes and spacing
-
-Each voice draws only from the set's notes within its own register band:
-
-1. Take a fundamental on the set's root, near C2.
-2. Centre the voices on its partials 2, 3, 4, 6 and 8, from bassoon up to flute.
-3. Each voice's band runs halfway to its neighbours' centres.
-
-Low voices end up an octave or a fifth apart, and higher ones closer together, loosely following
-the harmonic series.
-
-Voicing keeps the colour notes up top, as in classical scoring, to limit dissonance:
-
-- The bassoon plays only the root and 5th.
-- The horn plays only core chord tones (root, 3rd or sus, 5th, 7th or 6th).
-- The 9ths, 11ths and 13ths go to the clarinet, oboe and flute.
-- Palettes only use pitches the instrument has recorded at or below its cap.
-
-For `C.maj9` that gives:
-
-| Voice | Palette |
-|---|---|
-| bassoon | C2 G2 C3 |
-| horn | E3 G3 B3 |
-| clarinet | B3 C4 D4 |
-| oboe | E4 G4 B4 |
-| flute | B4 C5 D5 E5 G5 B5 C6 |
-
-The constants are at the top of `src/quintet/voice.py`.
-
-## Generation
-
-`generate(seed, notes)` writes each voice in its instrument's idiom. The `PROFILES` table in
-`src/quintet/voice.py` holds these:
-
-- **Melodic walk:** each note moves from the previous one by a weighted repeat, step (next palette
-  note), skip (two palette notes) or leap.
-- **One shared pulse:** a generated line has one slot per beat, each a note, a hold, a rest or a
-  pair of eighths, so every note starts on the same eighth-note grid in every voice. Phasing comes
-  from the voices' different loop lengths, not from tuplets.
-- **Quick figures:** an occasional run of eighths in the instrument's own style, e.g. a 3-note
-  flute run `[1, 2], 3`.
-- **Breathing:** rests and holds. On top of the instrument's own rests, a phrase cell often ends on
-  a rest (70%), and a voice sometimes sits out a whole cell (25% of cells after the first), so the
-  texture has space instead of all five playing at once. On average about 3.7 of the 5 voices sound
-  at any moment.
-- **Loop length:** every voice's loop lasts 8–13 s (a whole number of beats) at the piece's tempo,
-  strung from phrase cells of whole beats (each about the instrument's own cell length). That's long enough not to feel repetitive, short
-  enough to hear each loop come round.
-
-| | Moves | Quick figures | Character |
-|---|---|---|---|
-| flute | mostly steps | 3–4-note scale runs | busiest, few rests |
-| oboe | steps | stepwise pairs | lyrical, breathes often |
-| clarinet | skips | arpeggios | smooth, sustains often |
-| horn | repeated notes, skips | repeated notes | favours root and 5th; sustains often |
-| bassoon | leaps, octaves | octave/leap bounces | favours the root |
-
-On top of that:
-
-- 1–2 voices per piece sustain 1–3 long notes (3 beats or more each) across their loop, usually
-  (60%) closing it with a 1–2-beat rest. They're
-  chosen weighted towards the instruments whose recordings can hold long notes: clarinet, horn and
-  flute, rarely the oboe or bassoon.
-- No voice drifts: `drift` is only for hand-written pieces.
-- Each voice's dynamic runs from `p` up to its instrument's cap, `mp`.
-- Each voice gets a volume sine with its own period, starting (and ending) at its quietest.
-
-It redraws, deterministically for that seed, until the piece fits `--max-seconds` and has at least
-3 different loop lengths, so the voices genuinely phase. Nearby loop lengths (say 7 against 8 s)
-slide past each other slowly, Reich-style. Pieces run about 1–8 minutes (median about 5.5).
-
-## Theory helpers
-
-```python
-C + 7 == G;  As == Bb
-C.maj7s11, C.lydian, G.dom7, D.min7, A.pentatonic_minor     # PitchSet
-C.maj.up(P4) == F.maj;  C.maj.fifths(1) == G.maj;  C.maj.fourths(2) == Bb.maj
-fifths(C, 4) == [C, G, D, A];  fourths(C.dom7, 3) == [C.dom7, F.dom7, Bb.dom7]
-C.maj7s11.pitches(60, 72) == [60, 64, 66, 67, 71, 72]       # MIDI numbers in range
-```
-
-- Chords: `maj min dim aug sus2 sus4 dom7 maj7 min7 dim7 m7b5`
-- Extended chords: `maj9 maj69 min9 min11 sus9 min69 dom9 maj7s11 dom7s11`. `s.core` gives a
-  chord's tones without its colour notes, and `s.bass` its root and 5th.
-- Scales: `major minor dorian phrygian lydian mixolydian locrian harmonic_minor
-  pentatonic_major pentatonic_minor whole_tone`
-- Intervals: `m2 M2 m3 M3 P4 TT P5 m6 M6 m7 M7`
-
-## Sample library
-
-```
-samples/<instrument>/notes/<dynamic>/<instrument>_<note>_<dynamic>_<length>.wav
-samples/<instrument>/extended/<technique>/<instrument>_<note>_<technique>_<dynamic>_<length>.wav
-```
-
-- Notes use `s` for sharp (`As1` = A♯1).
-- Dynamics are `pp p mp mf f ff`.
-- Lengths are `0.25s 0.5s 1s 1.5s long very-long`.
-- Pieces use only `notes/`. For each note, the sample used is the shortest recording that covers
-  the note's duration.
-- Not every instrument has every dynamic; for example, the clarinet has no `mf` or `mp`.
-- **Levelling:** the recordings' levels differ by up to about 14 dB between instruments, so every
-  sample is scaled until its loudest 0.3 s reaches a target for the dynamic it's playing:
-  `mf` = −61 dBFS RMS, `pp` −12 dB, `p` −8 dB, `mp` −4 dB, `f` +3 dB, `ff` +6 dB.
-- **Only ever turned down:** that reference is set low enough that no recording is ever boosted,
-  even at `ff` with the biggest metric accent and level variation on top (a test checks every
-  recording). The quietest flute recordings set it, with about 1 dB to spare. Mastering brings the
-  finished mix up to −13 LUFS.
-- **Trims are cuts:** `INSTRUMENT_TRIM_DB` in `src/quintet/render.py` adjusts each instrument by
-  ear: the oboe 6 dB down so it doesn't stick out, the horn 2 dB down so it carries from the back
-  of the stage without dominating, and the flute, clarinet and bassoon 1.5 dB down.
-- **Unmastered files are 32-bit float:** stems and `--no-master` mixes sit far below full scale, so
-  they're written as float WAVs that keep every bit of detail. Turn them up where you play or mix
-  them. The mastered mix is 16-bit.
+- Run it with `uv run python out/piece_2000.py`; flags still apply (e.g. `--stems`, `--tempo 90`).
+- `voice(pattern, beats, drift=0, dynamic="p", lfo=0, lfo_phase=0.0)`: `pattern` repeats every
+  `beats` beats; `drift=k` shortens the cycle to `beats * k/(k+1)`; `dynamic` is one of
+  `pp p mp mf f ff`; `lfo=k` adds a volume sine with `k` cycles over the piece.
+- Pattern elements: `1`, `2`, … palette notes (lowest first); `0` rest; `_` hold; `[...]` splits
+  the slot evenly; `"3+"`/`"3-"` note 3 a scale step up/down; `"3="` note 3 renewed seamlessly.
 
 ## Development
 
-| Command | Does |
+| Target | Does |
 |---|---|
-| `make sync` | install the project and its dependencies |
-| `make test` | run the tests (pytest) |
-| `make lint` | check the code (ruff) |
-| `make format` | format the code (ruff) |
+| `make test` | Run the tests (pytest) |
+| `make lint` | Check the code (ruff) |
+| `make format` | Format the code (ruff) |
+| `make fixtures` | Re-record the generation parity fixture |
 
-`tests/test_generation_parity.py` pins what 20 seeds generate, so accidental changes to generation
-fail the tests. After changing generation on purpose, re-record it with `make fixtures`.
+- `tests/test_generation_parity.py` pins what 20 seeds generate, so an accidental change to
+  generation fails the tests. Run `make fixtures` only after changing generation on purpose.

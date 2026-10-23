@@ -23,11 +23,13 @@ SEAM_SECONDS = 10.0
 
 
 def read(path: Path) -> tuple[np.ndarray, float]:
+    """The audio (channels, frames) and sample rate of a sound file."""
     with AudioFile(str(path)) as f:
         return f.read(f.frames), f.samplerate
 
 
 def write(path: Path, audio: np.ndarray, rate: float, repeats: int = 1) -> Path:
+    """Write `audio` `repeats` times end to end, 16-bit, in the format `path`'s extension names."""
     with AudioFile(str(path), "w", samplerate=rate, num_channels=audio.shape[0], bit_depth=16) as f:
         for _ in range(repeats):
             f.write(audio)
@@ -35,6 +37,7 @@ def write(path: Path, audio: np.ndarray, rate: float, repeats: int = 1) -> Path:
 
 
 def seam_report(audio: np.ndarray) -> str:
+    """Compare the jump from the last frame to the first with the 99th-percentile frame-to-frame step."""
     jump = float(np.abs(audio[:, 0] - audio[:, -1]).max())
     step = float(np.percentile(np.abs(np.diff(audio, axis=1)).max(axis=0), 99))
     verdict = "seamless" if jump <= step else "a step at the join"

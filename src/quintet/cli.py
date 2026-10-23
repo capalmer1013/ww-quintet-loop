@@ -7,22 +7,23 @@ from .voice import generate, piece_beats
 
 
 def main() -> None:
+    """Make one piece per seed in --seeds (or --count clock seeds), printing a line for each."""
     config = Config()  # defaults live on Config; every field is also a CLI flag
     resolve_notes(config.notes, 0)  # fail fast on a bad --notes
-    requested_tempo = config.tempo
+    requested_tempo = config.tempo  # 0 = random: piece() overwrites config.tempo per seed
     for seed in config.seed_range():
         try:
             piece(config, seed, requested_tempo)
-        except BaseException:
+        except BaseException:  # including Ctrl-C: release this seed's claim if nothing was written
             claimed = config.output_dir / f"{PIECE_NAME.format(seed=seed)}.wav"
-            if claimed.exists() and claimed.stat().st_size == 0:  # an unused "now" seed claim
+            if claimed.exists() and claimed.stat().st_size == 0:
                 claimed.unlink()
             raise
 
 
 def piece(config: Config, seed: int, requested_tempo: float) -> None:
     """Generate, render and report one piece."""
-    config.tempo = requested_tempo
+    config.tempo = requested_tempo  # piece_tempo reads config.tempo: undo the previous seed's
     config.tempo = config.piece_tempo(seed)  # what generate, render and piece_code use
     notes = resolve_notes(config.notes, seed)
     voices = generate(seed, notes, config)

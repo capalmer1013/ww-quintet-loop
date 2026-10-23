@@ -2,10 +2,12 @@ import unittest
 from collections import Counter
 
 from quintet.theory import (
+    CHORDS,
     HARMONY_WEIGHTS,
     M3,
     P4,
     P5,
+    SCALES,
     A,
     As,
     B,
@@ -107,6 +109,12 @@ class HarmonyTest(unittest.TestCase):
         for quality in HARMONY_WEIGHTS:  # every random chord's tones belong to its parent scale
             chord = getattr(C, quality)
             self.assertLessEqual(set(chord.pitch_classes), set(chord.scale.pitch_classes), quality)
+
+    def test_every_chord_has_a_parent_scale(self):
+        for quality in CHORDS:
+            self.assertIn(getattr(C, quality).scale.quality, SCALES, quality)
+        for quality in SCALES:
+            self.assertEqual(getattr(C, quality).scale, getattr(C, quality))
 
     def test_resolve_fixed(self):
         self.assertEqual(resolve_notes("Fs.maj9", 3), Fs.maj9)

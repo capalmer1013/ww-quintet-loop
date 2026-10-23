@@ -31,7 +31,7 @@ src = ["src", "tests"]
 select = ["E", "F", "W", "I", "B", "UP"]
 ignore = [
     "E731",  # small lambdas are used deliberately
-    "B905",  # zip() pairs lists with their own shifted copies on purpose; strict= would be wrong
+    "B905",  # zip() often pairs a list with its own shifted copy (xs, xs[1:]), where strict= would raise
 ]
 
 [dependency-groups]

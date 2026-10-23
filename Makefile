@@ -18,7 +18,7 @@ help: ## List targets and every quintet flag
 	@echo '    --seeds A | A-B | now          one piece per seed; A-B excludes B; now = from the clock [now]'
 	@echo '    --count N                      with --seeds now: how many new pieces [1]'
 	@echo '    --notes random | C.random | C.lydian | C.maj9 ...'
-	@echo '                                   key and mode, a mode on C, or a fixed set [random]'
+	@echo '                                   random key and harmony, a random harmony on C, or a fixed one [random]'
 	@echo '    --tempo BPM                    0 = random 60-85 per seed [0]'
 	@echo '    --max-seconds S                longest piece (one full phase cycle) [480]'
 	@echo '    --reverb AMOUNT                hall reverb, 0 = dry [0.75]'

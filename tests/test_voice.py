@@ -1,9 +1,14 @@
+import tempfile
+import time
 import unittest
 from fractions import Fraction as Fr
 from functools import cache
+from pathlib import Path
 
 from quintet import (
+    QUALITIES,
     QUINTET,
+    SAMPLE_RATE,
     B,
     C,
     Config,
@@ -15,17 +20,21 @@ from quintet import (
     generate,
     instrument,
     midi_to_note,
+    note_to_midi,
     palette,
     parallels,
     piece_beats,
     resolve_notes,
     resolve_pitch,
+    sustainable_frames,
     too_close,
     voice,
 )
 from quintet.pattern import STEP
-from quintet.samples import note_to_midi
 from quintet.voice import CLASHES_PER_MINUTE, LFO_DEPTH_DB, LFO_PEAK_DB, LOW_TO_HIGH, SWEET
+
+QUIETEST = 10 ** ((LFO_PEAK_DB - LFO_DEPTH_DB) / 20)
+LOUDEST = 10 ** (LFO_PEAK_DB / 20)
 
 Config(argv=[], tempo=60)
 
@@ -52,8 +61,6 @@ class VoiceTest(unittest.TestCase):
             voice([1, 0.5], beats=2)
 
     def test_code_round_trips(self):
-        from quintet import _  # noqa: F401  (used by eval)
-
         v = voice([1, [2, 3], _, 0], beats=5, drift=8, dynamic="mp", lfo=3, lfo_phase=0.25)
         self.assertEqual(v.code(), "voice([1, [2, 3], _, 0], beats=5, drift=8, dynamic='mp', lfo=3, lfo_phase=0.25)")
         self.assertEqual(eval(v.code()), v)
@@ -62,11 +69,10 @@ class VoiceTest(unittest.TestCase):
 class LfoTest(unittest.TestCase):
     def test_gain_range_and_wrap(self):
         v = voice([1], beats=4, lfo=3, lfo_phase=0.0)
-        self.assertAlmostEqual(v.gain(0), 10 ** (LFO_PEAK_DB / 20))  # loudest
-        self.assertAlmostEqual(v.gain(1 / 6), 10 ** ((LFO_PEAK_DB - LFO_DEPTH_DB) / 20))  # quietest, half a cycle in
+        self.assertAlmostEqual(v.gain(0), LOUDEST)
+        self.assertAlmostEqual(v.gain(1 / 6), QUIETEST)  # half a cycle in
         self.assertAlmostEqual(v.gain(0.2), v.gain(1.2))  # whole cycles: seamless loop
-        low, high = 10 ** ((LFO_PEAK_DB - LFO_DEPTH_DB) / 20), 10 ** (LFO_PEAK_DB / 20)
-        self.assertTrue(all(low - 1e-9 <= v.gain(i / 100) <= high + 1e-9 for i in range(100)))
+        self.assertTrue(all(QUIETEST - 1e-9 <= v.gain(i / 100) <= LOUDEST + 1e-9 for i in range(100)))
         self.assertEqual(voice([1], beats=4).gain(0.3), 1.0)
 
     def test_invalid(self):
@@ -75,14 +81,11 @@ class LfoTest(unittest.TestCase):
                 voice([1], beats=4, **kwargs)
 
     def test_generated_sines_start_and_end_at_their_quietest(self):
-        from quintet.voice import LFO_DEPTH_DB, LFO_PEAK_DB
-
-        quietest = 10 ** ((LFO_PEAK_DB - LFO_DEPTH_DB) / 20)
         for s in range(10):
             for x in generate(s, resolve_notes("random", s)).values():
-                self.assertAlmostEqual(x.gain(0.0), quietest)
-                self.assertAlmostEqual(x.gain(1.0), quietest)  # whole cycles: the loop point matches
-                self.assertGreater(max(x.gain(i / 200) for i in range(200)), 2 * quietest)  # it still swells
+                self.assertAlmostEqual(x.gain(0.0), QUIETEST)
+                self.assertAlmostEqual(x.gain(1.0), QUIETEST)  # whole cycles: the loop point matches
+                self.assertGreater(max(x.gain(i / 200) for i in range(200)), 2 * QUIETEST)  # it still swells
 
     def test_generated_sines_are_slow_and_out_of_step(self):
         out_of_step = total_voices = 0
@@ -90,11 +93,11 @@ class LfoTest(unittest.TestCase):
         for s in range(40):
             v = generate(s, C.lydian, config)
             total = piece_beats(v.values())
-            seconds_ = float(total)  # 60 bpm: one beat per second
+            seconds = float(total)  # 60 bpm: one beat per second
             for x in v.values():
                 self.assertGreaterEqual(x.lfo, 1)
-                if seconds_ >= 10:
-                    self.assertTrue(10 <= seconds_ / x.lfo <= 30, (s, seconds_, x.lfo))
+                if seconds >= 10:
+                    self.assertTrue(10 <= seconds / x.lfo <= 30, (s, seconds, x.lfo))
                 total_voices += 1
                 out_of_step += int(total / x.span) % x.lfo != 0
         self.assertGreater(out_of_step / total_voices, 0.7)
@@ -168,8 +171,6 @@ class PaletteTest(unittest.TestCase):
             self.assertGreaterEqual(min(palettes["horn"]) - min(palettes["bassoon"]), 7, notes)
 
     def test_palettes_stay_in_each_instruments_sweet_range(self):
-        from quintet.theory import QUALITIES
-
         for quality in QUALITIES:
             for root in range(12):
                 notes = getattr(PitchClass(root), quality)
@@ -190,7 +191,7 @@ class VoicingTest(unittest.TestCase):
         self.assertIn(2, upper)  # the 9th (D) is voiced, but only above the horn
 
 
-class EveryChordRendersTest(unittest.TestCase):
+class EveryChordTest(unittest.TestCase):
     def test_quartal_sets_keep_the_3rd_out_of_horn_and_bassoon(self):
         for root in range(12):
             for quality in ("quartal", "quartal_bright"):
@@ -200,8 +201,6 @@ class EveryChordRendersTest(unittest.TestCase):
                     self.assertFalse({3, 4} & above_root, (root, quality, name))
 
     def test_every_palette_note_has_a_soft_sample(self):
-        from quintet.theory import QUALITIES, PitchClass
-
         for quality in QUALITIES:
             for root in range(12):
                 notes = getattr(PitchClass(root), quality)
@@ -277,8 +276,6 @@ class RearticulationTest(unittest.TestCase):
         self.assertGreater(renewed, 10)
 
     def test_no_note_outlasts_what_its_instrument_can_sustain(self):
-        from quintet import sustainable_frames
-
         for s in range(20):
             notes = resolve_notes("random", s)
             v = generate(s, notes)
@@ -290,16 +287,12 @@ class RearticulationTest(unittest.TestCase):
                         continue
                     m = resolve_pitch(e.index, tones, notes, inst.playable)
                     longest = inst.note(midi_to_note(m), x.dynamic, 1e9, max_dynamic=inst.max_layer)
-                    cap = sustainable_frames(round(longest.seconds * 44100)) / 44100
+                    cap = sustainable_frames(round(longest.seconds * SAMPLE_RATE)) / SAMPLE_RATE
                     self.assertLessEqual(float(e.beats), cap + 1e-6, (s, name))  # 60 bpm: beats = seconds
 
 
 class TimeSeedTest(unittest.TestCase):
     def test_now_claims_distinct_increasing_seeds(self):
-        import tempfile
-        import time
-        from pathlib import Path
-
         out = Path(tempfile.mkdtemp())
         config = Config(argv=[], tempo=60, seeds="now", output_dir=out)
         before = time.time_ns() // 10**7
@@ -311,9 +304,6 @@ class TimeSeedTest(unittest.TestCase):
         Config(argv=[], tempo=60)
 
     def test_count_claims_that_many_new_seeds_lazily(self):
-        import tempfile
-        from pathlib import Path
-
         out = Path(tempfile.mkdtemp())
         config = Config(argv=[], tempo=60, seeds="now", count=3, output_dir=out)
         seeds = config.seed_range()

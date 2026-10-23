@@ -1,6 +1,6 @@
-"""Finishing the stereo mix: the stage (each voice's depth and early reflections), a convolution
-hall and, when mastering, EQ, saturation, compression, loudness and limiting for small speakers
-(numpy, pedalboard and pyloudnorm).
+"""Finishing the stereo mix for render.py: the stage (each voice's tone, depth and early
+reflections), a convolution hall and, when mastering, EQ, saturation, compression, loudness and
+limiting for small speakers (numpy, pedalboard and pyloudnorm).
 
 Every piece loops, so nothing here may make the loop point sound different from the rest of it.
 Delays wrap round and the hall is a circular convolution, both exact. pedalboard's processors are
@@ -43,57 +43,63 @@ __all__ = [
     "loudness_lufs",
 ]
 
-# stage: a voice further back (depth 0 = front row .. 1 = back) arrives a little later, a little
-# darker and with more of the hall in it
+# --- pre-roll: how much of a piece's ending a stateful processor hears before the piece ---
+FILTER_PREROLL_SECONDS = 0.1  # plenty for a shelf or pass filter to settle
+DYNAMICS_PREROLL_SECONDS = 2.0  # several compressor/limiter release times
+
+# --- stage: a voice further back (depth 0 = front row .. 1 = back) arrives later, darker and wetter ---
 DEPTH_DELAY_MS = 6.0  # at depth 1: about 2 m further away
 DEPTH_SHELF_HZ, DEPTH_SHELF_DB = 4000.0, -4.0  # at depth 1: air absorbs the highs
-# per-instrument tone, by ear, as (hz, dB, q) peaks then a (hz, dB) high shelf: the oboe's nasal
-# honk and reedy edge down (the latter also where mastering's presence boost lands), its buzz softened
-VOICE_EQ = {"oboe": ([(1200.0, -3.0, 1.0), (3000.0, -3.0, 1.0)], (6000.0, -3.0))}
 DEPTH_SEND_DB = 4.0  # extra hall at depth 1
-FILTER_PREROLL_SECONDS = 0.1  # plenty for a shelf or pass filter to settle
-# early reflections: (ms after the direct sound, dB) off alternate side walls, left first. A voice
-# panned towards one wall hears it a little sooner; one further back hears them closer together
+
+# --- per-instrument tone, by ear: (hz, dB, q) peaks then a (hz, dB) high shelf ---
+# the oboe: its nasal honk and reedy edge down (the edge is also where mastering's presence boost
+# lands), its buzz softened
+VOICE_EQ = {"oboe": ([(1200.0, -3.0, 1.0), (3000.0, -3.0, 1.0)], (6000.0, -3.0))}
+
+# --- early reflections: (ms after the direct sound, dB) off alternate side walls, left first ---
+# a voice panned towards a wall hears it sooner; one further back hears all of them closer together
 REFLECTIONS = ((9.0, -14.0), (14.0, -15.0), (21.0, -17.0), (29.0, -19.0), (38.0, -21.0))  # quiet: no combing
-REFLECTION_PAN_SKEW = 0.25  # share of a tap's delay a full pan towards (or away from) its wall takes off (adds)
+REFLECTION_PAN_SKEW = 0.25  # share of a tap's delay a full pan towards its wall takes off (away: adds)
 REFLECTION_DEPTH_SQUEEZE = 0.35  # share of every tap's delay depth 1 takes off
 REFLECTION_LOWPASS_HZ = 6000.0  # walls absorb the highs
 
-# hall: --reverb sets the wet level (times REVERB_WET_SCALE, calibrated so an amount gives about the
-# wet-to-dry loudness it did with the earlier algorithmic hall), --room its size, --reverb-ir a recorded space instead
-REVERB_WET_SCALE = 0.2  # over seeds 7, 12 and 31: within about 2 LU of the old hall at the same amount
+# --- hall: --reverb sets the wet level, --room its size, --reverb-ir a recorded space instead ---
+REVERB_WET_SCALE = 0.2  # wet level per unit of --reverb (calibrated by loudness over seeds 7, 12 and 31)
 REVERB_PREDELAY_MS = 25.0  # a gap before the hall, so attacks stay clear
 REVERB_HIGHPASS_HZ, REVERB_LOWPASS_HZ = 250.0, 7000.0  # the hall's own EQ: no low-end mud, no hiss
 REVERB_FILTER_STAGES = 2  # each first-order: two give 12 dB/octave
 REVERB_CROSSFEED = 0.5  # how much of the other channel each side of the hall hears
-# the built-in hall: decaying noise, each octave decaying at its own rate (highs die first), RT60
-# (to -60 dB) from HALL_RT60_SECONDS[0] at --room 0 to [1] at --room 1, so 0.9 is about 2.85 s
-HALL_RT60_SECONDS = (0.6, 3.1)
+
+# --- the built-in hall: decaying noise, each octave at its own rate (highs die first) ---
+HALL_RT60_SECONDS = (0.6, 3.1)  # time to fall 60 dB at --room 0 and 1; 0.9 gives about 2.85 s
 HALL_OCTAVES_HZ = (63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000)
 HALL_DECAY_RATIO = (1.3, 1.2, 1.1, 1.0, 1.0, 0.9, 0.75, 0.55, 0.4)  # each octave's RT60, times the hall's
 HALL_LENGTH_RT60S = 1.2  # long enough to fall 72 dB
 HALL_ONSET_MS = 12.0  # the reflections build up into the diffuse tail over this long
 HALL_SEED = 0
 
-# EQ for phone speakers: rumble out, low-mid boxiness down, presence and air up
+# --- mastering EQ for phone speakers: rumble out, low-mid boxiness down, presence and air up ---
 HIGHPASS_HZ, HIGHPASS_STAGES = 60.0, 2  # each stage is first-order: two give 12 dB/octave
 MUD_HZ, MUD_DB, MUD_Q = 300.0, -3.0, 1.0
 PRESENCE_HZ, PRESENCE_DB, PRESENCE_Q = 3500.0, 3.5, 0.9
 AIR_HZ, AIR_DB = 10000.0, 1.5  # a high shelf
-# saturation: tanh(drive * x) / drive, so quiet audio passes unchanged and peaks round off with a
-# little warmth; --saturation sets drive / SATURATION_DRIVE
+
+# --- mastering dynamics ---
+# saturation is tanh(drive * x) / drive: quiet audio passes unchanged, peaks round off with a little
+# warmth; drive = --saturation * SATURATION_DRIVE
 SATURATION_DRIVE = 3.0
-# gentle compression of anything louder than COMP_BELOW_TARGET under the target loudness (after the
-# piece is brought to that loudness), so quiet hairpins and sine troughs survive small speakers
+# gentle compression of anything louder than COMP_BELOW_TARGET dB under the target loudness (applied
+# once the piece is at that loudness), so quiet hairpins and sine troughs survive small speakers
 COMP_BELOW_TARGET, COMP_RATIO, COMP_ATTACK_MS, COMP_RELEASE_MS = 10.0, 3.0, 20.0, 300.0
 TARGET_LUFS = -13.0  # loud enough for phones that the peaks reach the ceiling
 CEILING_DB = -3.0  # headroom for lossy encoding and players' own processing
 LIMITER_RELEASE_MS = 100.0
-DYNAMICS_PREROLL_SECONDS = 2.0  # several compressor/limiter release times
 PEAK = 0.99  # without mastering, the mix is only scaled down to keep its peak under this
 
 
 def _frames(ms: float) -> int:
+    """Milliseconds as a whole number of frames."""
     return round(ms * SAMPLE_RATE / 1000)
 
 
@@ -112,6 +118,7 @@ def loudness_lufs(audio: np.ndarray) -> float:
 
 
 def _gain_to_target(audio: np.ndarray) -> float:
+    """The gain that brings `audio` to TARGET_LUFS (1 for silence, which has no loudness)."""
     loudness = loudness_lufs(audio)
     return 1.0 if not math.isfinite(loudness) else 10 ** ((TARGET_LUFS - loudness) / 20)
 
@@ -142,8 +149,8 @@ def send_gain(depth: float) -> float:
 
 
 def reflections(line: np.ndarray, pan: float, depth: float) -> np.ndarray:
-    """A placed mono line's early reflections, stereo (2, frames), still full-range: the caller
-    darkens their sum once with reflection_board()."""
+    """A placed mono line's early reflections, stereo (2, frames). Still full-range: finish() darkens
+    the sum over all voices once."""
     out = np.zeros((2, len(line)), dtype=np.float32)
     for i, (ms, db) in enumerate(REFLECTIONS):
         side = i % 2  # 0 = left wall, 1 = right
@@ -151,10 +158,6 @@ def reflections(line: np.ndarray, pan: float, depth: float) -> np.ndarray:
         delay = ms * (1 - REFLECTION_PAN_SKEW * towards) * (1 - REFLECTION_DEPTH_SQUEEZE * depth)
         out[side] += 10 ** (db / 20) * np.roll(line, _frames(delay))
     return out
-
-
-def reflection_board() -> Pedalboard:
-    return Pedalboard([LowpassFilter(REFLECTION_LOWPASS_HZ)])
 
 
 # --- the hall ---
@@ -182,6 +185,7 @@ def _hall(room: float) -> np.ndarray:
 
 
 def _recorded(path: str) -> np.ndarray:
+    """A recorded impulse response at SAMPLE_RATE, stereo (a mono one on both sides)."""
     with AudioFile(path) as f, f.resampled_to(SAMPLE_RATE) as r:
         ir = r.read(r.frames)
     return np.vstack([ir[0], ir[0]]) if ir.shape[0] == 1 else ir[:2]
@@ -190,8 +194,8 @@ def _recorded(path: str) -> np.ndarray:
 @cache
 def impulse_response(room: float, path: str = "") -> np.ndarray:
     """The hall the mix is convolved with, stereo (2, frames): a recorded space from `path`, else
-    the built-in hall of size `room`. Pre-delayed, EQ'd and scaled to unit energy per channel, so
-    --reverb means the same for any space. Cached and read-only."""
+    the built-in hall of size `room`. EQ'd, pre-delayed and scaled to unit energy per channel, so
+    --reverb means the same for any space. Cached, so returned read-only."""
     ir = (_recorded(path) if path else _hall(room)).astype(np.float32)
     eq = Pedalboard(
         [HighpassFilter(REVERB_HIGHPASS_HZ) for _ in range(REVERB_FILTER_STAGES)]
@@ -222,8 +226,8 @@ def _fast_length(n: int) -> int:
 
 
 def _circular_convolve(audio: np.ndarray, ir: np.ndarray) -> np.ndarray:
-    """Each channel of `audio` convolved with the same channel of `ir`, the tail wrapping round to
-    the start: exactly what a loop that follows itself hears."""
+    """Each channel of `audio` convolved with the same channel of `ir`, the tail wrapping round to the
+    start: exactly what a loop that follows itself hears."""
     n = audio.shape[1]
     if ir.shape[1] > n:  # a piece shorter than the hall: fold the hall onto the piece's length
         ir = np.pad(ir, ((0, 0), (0, -ir.shape[1] % n))).reshape(2, -1, n).sum(axis=1)
@@ -235,8 +239,8 @@ def _circular_convolve(audio: np.ndarray, ir: np.ndarray) -> np.ndarray:
 
 
 def reverb(audio: np.ndarray, amount: float, room: float, send: np.ndarray | None = None, ir: str = "") -> np.ndarray:
-    """The dry mix plus `amount` of the hall, fed `send` (the mix itself if None), its tail carried
-    over the loop point."""
+    """The dry mix plus `amount` of the hall, fed by `send` (the mix itself if None), its tail carried
+    over the loop point. Both channels feed each side of the hall, the other one at REVERB_CROSSFEED."""
     if amount < 0:
         raise ValueError(f"reverb amount must be >= 0, got {amount!r}")
     if not 0 <= room <= 1:
@@ -276,7 +280,7 @@ def master(audio: np.ndarray, saturation: float = 0.0) -> np.ndarray:
     # the mix arrives far below full scale (levelling only cuts): bring its peak to full scale first,
     # or the loudness meter's absolute gate (-70 LUFS) would leave out its quiet passages
     audio = audio / float(np.abs(audio).max())
-    audio = audio * _gain_to_target(audio)  # so saturation and the compressor mean the same for every piece
+    audio = audio * _gain_to_target(audio)  # at the target, saturation and compression mean the same for any piece
     audio = saturate(_looped(Pedalboard(eq_board()), audio, FILTER_PREROLL_SECONDS), saturation)
     compressor = Pedalboard([Compressor(TARGET_LUFS - COMP_BELOW_TARGET, COMP_RATIO, COMP_ATTACK_MS, COMP_RELEASE_MS)])
     audio = _looped(compressor, audio, DYNAMICS_PREROLL_SECONDS)
@@ -291,10 +295,11 @@ def master(audio: np.ndarray, saturation: float = 0.0) -> np.ndarray:
 def finish(
     stereo: np.ndarray, config: Config, early: np.ndarray | None = None, send: np.ndarray | None = None
 ) -> np.ndarray:
-    """The room (early reflections and the hall, fed `send`), then mastering (or, with --no-master,
-    just a peak-safe scale). --reverb 0 leaves out the whole room."""
+    """The room (early reflections, darkened by the walls, and the hall, fed by `send`), then mastering
+    (or, with --no-master, just a peak-safe scale). --reverb 0 leaves out the whole room."""
     if config.reverb and early is not None:
-        stereo = stereo + _looped(reflection_board(), early, FILTER_PREROLL_SECONDS)
+        walls = Pedalboard([LowpassFilter(REFLECTION_LOWPASS_HZ)])
+        stereo = stereo + _looped(walls, early, FILTER_PREROLL_SECONDS)
     stereo = reverb(stereo, config.reverb, config.room, send, config.reverb_ir)
     if config.master:
         return master(stereo, config.saturation)

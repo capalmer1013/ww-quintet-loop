@@ -2,7 +2,7 @@ import copy
 import unittest
 from fractions import Fraction as Fr
 
-from quintet.pattern import Event, _, _levels, accents, event_paths, expand, tile
+from quintet.pattern import Event, _, _levels, accents, event_paths, expand, leaves, tile
 
 
 def shape(events):
@@ -52,6 +52,12 @@ class ExpandTest(unittest.TestCase):
         self.assertEqual(event_paths(pattern), [None, (1,), (2, 0), (2, 2), (3,)])
         self.assertEqual(len(event_paths(pattern)), len(expand(pattern, 5)))
 
+    def test_leaves_include_holds(self):
+        self.assertEqual(
+            leaves([1, [_, 2]], 2),
+            [((0,), 0, 1, 1), ((1, 0), 1, Fr(1, 2), _), ((1, 1), Fr(3, 2), Fr(1, 2), 2)],
+        )
+
     def test_metric_levels(self):
         self.assertEqual(_levels(4), [0, 3, 1, 3])  # beat 1, then beat 3, then the off-beats
         self.assertEqual(_levels(3), [0, 2, 3])  # middle a touch stronger than the last
@@ -64,6 +70,8 @@ class ExpandTest(unittest.TestCase):
         self.assertEqual(max(a), a[0])  # the downbeat is strongest
         self.assertGreater(a[3], a[2])  # beat 3 of 4 beats an off-beat sub-note
         self.assertEqual(accents([_, 1])[0], 0.0)  # a leading hold isn't accented
+        pattern = [_, 1, [2, _, "3+"], 0, _]
+        self.assertEqual(len(accents(pattern)), len(expand(pattern, 5)))
 
     def test_hold_survives_copying(self):
         self.assertIs(copy.deepcopy([_])[0], _)

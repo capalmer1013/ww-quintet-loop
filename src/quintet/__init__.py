@@ -45,16 +45,20 @@ from .voice import (
 )
 
 __all__ = [
+    # settings
     "Config",
+    # mixing and mastering
     "finish",
     "loudness_lufs",
     "master",
     "reverb",
+    # rhythm patterns
     "Event",
     "_",
     "accents",
     "expand",
     "tile",
+    # rendering
     "hairpin",
     "leveled",
     "lfo_curve",
@@ -66,6 +70,7 @@ __all__ = [
     "sustain",
     "voice_line",
     "write_wav",
+    # instruments and samples
     "DYNAMICS",
     "QUINTET",
     "SAMPLE_RATE",
@@ -76,16 +81,18 @@ __all__ = [
     "midi_to_note",
     "note_to_midi",
     "sustainable_frames",
+    # voices and generation
     "PROFILES",
     "Profile",
     "Voice",
+    "clashes",
     "generate",
     "palette",
     "parallels",
-    "clashes",
-    "too_close",
     "piece_beats",
     "resolve_pitch",
+    "too_close",
     "voice",
+    # pitch theory
     *_theory_all,
 ]
