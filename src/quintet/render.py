@@ -57,6 +57,7 @@ HAIRPIN_PEAK = 0.4  # where in the note the swell peaks
 HAIRPIN_FLOOR_DB = -30.0  # level at the note's start and end, relative to its peak
 HAIRPIN_RISE_POWER = 3.0  # the crescendo stays quiet for longer, then blooms (1 = plain sin^2)
 HAIRPIN_LEGATO_FLOOR_DB = -9.0  # a long note joined legato swells from (and back to) the line's level
+TRIM_PASSES = 32  # sustain() trims to length in at most 10 passes for any recording (checked exhaustively)
 
 # --- joins within a phrase ---
 # only a phrase's first note is articulated (plays its recording's attack); later notes skip their
@@ -197,11 +198,12 @@ def sustain(audio: np.ndarray, n: int) -> np.ndarray:
         body = _crossfade(body, loop)
     # trim the body so that body + release (minus their crossfade) is exactly n frames
     keep = n - len(release) + min(round(CROSSFADE_SECONDS * SAMPLE_RATE), len(release) // 3)
-    while True:
+    for _ in range(TRIM_PASSES):
         out = _crossfade(body[:keep], release)
         if len(out) == n:
             return out
         keep += n - len(out)
+    raise RuntimeError(f"sustain could not trim a {len(audio)}-frame recording to {n} frames")
 
 
 # --- joining notes ---
@@ -404,6 +406,15 @@ def _joins(events, pitches, breaths) -> list[str | None]:
     return [join(i) for i in range(len(events))]
 
 
+def _loop_order(joins: list[str | None], following: tuple[str, ...]) -> list[int]:
+    """Every event index once, round the loop from the first event not joined by one of `following`,
+    so each event joined that way comes after the one before it (the last event before event 0). If
+    every event is, one join has to go first, so it starts at 0."""
+    count = len(joins)
+    first = next((i for i in range(count) if joins[i] not in following), 0)
+    return [(first + k) % count for k in range(count)]
+
+
 def _tunings(key: tuple, joins: list[str | None], intonation: bool, a4: float) -> list[float]:
     """Cents to retune each event by: to concert pitch `a4`, plus (with `intonation`) a few cents
     off, the same for a renewal as for the note it holds on."""
@@ -412,7 +423,7 @@ def _tunings(key: tuple, joins: list[str | None], intonation: bool, a4: float) -
     if intonation:
         draws = _jitter(_rng(*key, "intonation"), count, INTONATION_SPREAD_CENTS, INTONATION_LIMIT_CENTS)
         tuning = [round(c / INTONATION_STEP_CENTS) * INTONATION_STEP_CENTS for c in draws]
-        for i in range(count):
+        for i in _loop_order(joins, ("renew",)):
             if joins[i] == "renew":
                 tuning[i] = tuning[i - 1]
     concert = 1200 * math.log2(a4 / SAMPLE_A4)
@@ -467,40 +478,56 @@ def voice_line(
         level = [round(db / LEVEL_STEP_DB) * LEVEL_STEP_DB for db in draws]
     tuning = _tunings(key, joins, intonation, a4)
 
-    played: dict[int, int] = {}  # times each pitch has sounded, to rotate between its recordings
-    previous = None  # the last note's audio up to where the next one starts (for phase alignment)
-    previous_sample = None
+    lengths = [0] * count  # frames from each note's start to where the next one takes over
     for i, e in enumerate(events):
         if pitches[i] is None:
             continue
         j = (i + 1) % count
-        start = starts[i]
         end = starts[j] + (frames if j <= i else 0)
-        after = joins[j]
-        if not after and humanize:
+        if not joins[j] and humanize:
             if pitches[j] is None:  # the phrase ends on a rest: lean into it a little
                 rest = float(events[j].beats) * beat_seconds
                 note = float(e.beats) * beat_seconds
                 end += round(min(PHRASE_END_STRETCH * note, PHRASE_END_STRETCH_MAX, rest / 2) * SAMPLE_RATE)
             elif breaths[j]:  # a breath before the next note
                 end -= round(breaths[j] * SAMPLE_RATE)
-        n = max(end - start, SAMPLE_RATE // 100)
+        lengths[i] = max(end - starts[i], SAMPLE_RATE // 100)
+
+    played: dict[int, int] = {}  # times each pitch has sounded, to rotate between its recordings
+
+    def take(i: int) -> Sample:
         # a note joined into the next must still be sustaining, not releasing, when that note arrives
-        need = n / SAMPLE_RATE + (RELEASE_SECONDS if after else 0.0)
-        if joins[i] == "renew" and previous_sample is not None:
-            sample = previous_sample  # a renewal continues the same recording, so it lines up
-        else:
-            takes = inst.takes(midi_to_note(pitches[i]), v.dynamic, need, max_dynamic=inst.max_layer)
-            sample = takes[played.get(pitches[i], 0) % len(takes)] if humanize else takes[0]
-            played[pitches[i]] = played.get(pitches[i], 0) + 1
+        need = lengths[i] / SAMPLE_RATE + (RELEASE_SECONDS if joins[(i + 1) % count] else 0.0)
+        takes = inst.takes(midi_to_note(pitches[i]), v.dynamic, need, max_dynamic=inst.max_layer)
+        sample = takes[played.get(pitches[i], 0) % len(takes)] if humanize else takes[0]
+        played[pitches[i]] = played.get(pitches[i], 0) + 1
+        return sample
+
+    # recordings, picked in order; a renewal holds the one before it (event 0's, the last event's)
+    samples: list[Sample | None] = [None] * count
+    for i in range(count):
+        if pitches[i] is not None and joins[i] != "renew":
+            samples[i] = take(i)
+    for i in _loop_order(joins, ("renew",)):
+        if joins[i] == "renew":  # continues the same recording, so it lines up
+            samples[i] = samples[i - 1] or take(i)
+
+    # built round the loop, so a repeat or renewal can line up with the note before it, even at event 0
+    notes_audio: list[np.ndarray | None] = [None] * count
+    for i in _loop_order(joins, ("repeat", "renew")):
+        if pitches[i] is None:
+            continue
+        sample, n, previous = samples[i], lengths[i], notes_audio[i - 1]
         skip = None
         if joins[i] in ("repeat", "renew") and previous is not None:
             full = _tuned(sample, v.dynamic, tuning[i])
-            skip = _aligned_skip(full, _default_skip(sample, v.dynamic, joins[i]), previous)
-        accent_db = round(accent.get(e.start % v.span, 0.0) + level[i], 2)
-        audio = _note_audio(sample, v.dynamic, n, tempo, accent_db, joins[i], after, skip, tuning[i])
-        previous, previous_sample = audio[:n], sample
-        _add_looped(line, audio, start)
+            skip = _aligned_skip(full, _default_skip(sample, v.dynamic, joins[i]), previous[: lengths[i - 1]])
+        accent_db = round(accent.get(events[i].start % v.span, 0.0) + level[i], 2)
+        after = joins[(i + 1) % count]
+        notes_audio[i] = _note_audio(sample, v.dynamic, n, tempo, accent_db, joins[i], after, skip, tuning[i])
+    for i, audio in enumerate(notes_audio):
+        if audio is not None:
+            _add_looped(line, audio, starts[i])
     return line
 
 
@@ -525,7 +552,8 @@ def lfo_curve(v: Voice, frames: int) -> np.ndarray | None:
     # the sine changes over seconds: compute it every LFO_STEP frames and interpolate between
     coarse = np.arange(0, frames + LFO_STEP, LFO_STEP)
     dip = (1 - np.cos(2 * np.pi * ((coarse + 0.5) / frames * v.lfo + v.lfo_phase))) / 2
-    return np.interp(np.arange(frames, dtype=np.float32), coarse, lfo_gain(dip)).astype(np.float32)
+    # float64 positions: float32 can't hold every frame index past 2^24 (about 380 s)
+    return np.interp(np.arange(frames, dtype=np.float64), coarse, lfo_gain(dip)).astype(np.float32)
 
 
 def _with_lfo(line: np.ndarray, v: Voice) -> np.ndarray:

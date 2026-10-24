@@ -1,3 +1,4 @@
+import importlib
 import subprocess
 import sys
 import tempfile
@@ -36,10 +37,13 @@ from quintet.render import (
     LEVEL_REF_DB,
     PAN,
     STAGE_DEPTH,
+    lfo_curve,
     retuned,
 )
 from quintet.samples import DYNAMICS
 from quintet.voice import LFO_PEAK_DB
+
+render_module = importlib.import_module("quintet.render")  # the package's `render` is the function
 
 # 4 beats at 240 bpm = 1 s
 PIECE = dict(
@@ -260,6 +264,11 @@ class RenderTest(unittest.TestCase):
         self.assertAlmostEqual(swaying[0] / steady[0], 10 ** (LFO_PEAK_DB / 20), delta=0.1)
         self.assertLess(min(swaying[1:3]), 0.75 * steady[1])
 
+    def test_volume_sine_is_smooth_past_float32_frames(self):
+        frames = 2**24 + SAMPLE_RATE  # just past the frame where float32 positions run out
+        tail = np.diff(lfo_curve(voice([1], beats=4, lfo=3, lfo_phase=0.25), frames)[2**24 :])
+        self.assertLess(float(np.mean(tail == 0)), 0.25)  # not held for every other frame
+
     def test_missing_voice(self):
         with self.assertRaises(ValueError):
             render("x", C.maj7s11, flute=PIECE["flute"])
@@ -327,6 +336,16 @@ class HumanizeTest(unittest.TestCase):
         played = self.line(pattern, 8)
         self.assertGreater(gap(played, 4), 0.2)
         self.assertGreater(gap(played, 8), 0.2)  # across the loop point too
+
+    def test_renewal_at_the_loop_point_continues_the_last_note(self):
+        # event 0 renews the piece's last note, across the loop point
+        with mock.patch.object(render_module, "_note_audio", wraps=render_module._note_audio) as note:
+            self.line(["1=", 2, 1], 3)
+        args = [c.args for c in note.call_args_list]  # (sample, ..., join_in [5], join_out [6], skip [7], cents)
+        held = next(a for a in args if a[6] == "renew")
+        renewal = next(a for a in args if a[5] == "renew")
+        self.assertIs(renewal[0], held[0])  # the same recording, not a fresh take
+        self.assertIsNotNone(renewal[7])  # phase-aligned to it
 
     def test_repeats_rotate_between_recordings(self):
         def three_times(humanize):  # one note per 4 s cycle, three cycles: metrically identical
