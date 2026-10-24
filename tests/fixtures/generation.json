@@ -4,11 +4,11 @@
   "notes": "A.lydian",
   "tempo": 67.0,
   "voices": {
-   "flute": "voice([8, [9, 8], 7, 0, 7, _, 0, 9, 7], beats=9, lfo=17, lfo_phase=0.5)",
-   "oboe": "voice([1, 2, '2=', 1, '1=', 0, 0, _, _], beats=9, dynamic='mp', lfo=12, lfo_phase=0.5)",
-   "clarinet": "voice([2, 2, 2, 2, 2, 0, _, _, _, _, _, _, _, _], beats=14, lfo=10, lfo_phase=0.5)",
-   "horn": "voice([3, _, _, _, 3, _, _, 3, _, _, 0, 0], beats=12, dynamic='mp', lfo=17, lfo_phase=0.5)",
-   "bassoon": "voice([1, 1, _, [2, 3], [2, 2], 0, 2, 2, '2=', 2, 2, '2=', '2=', 0], beats=14, lfo=16, lfo_phase=0.5)"
+   "flute": "voice([8, [9, 8], 7, 0, 7, _, 0, 9, 7], beats=9, lfo=9, lfo_phase=0.5)",
+   "oboe": "voice([3, 3, '3=', 3, '3=', 0, 0, _, _], beats=9, dynamic='mp', lfo=18, lfo_phase=0.5)",
+   "clarinet": "voice([2, 2, 2, 2, 2, 0, _, _, _, _, _, _, _, _], beats=14, lfo=16, lfo_phase=0.5)",
+   "horn": "voice([3, _, _, _, 3, _, _, 3, _, _, 0, 0], beats=12, dynamic='mp', lfo=18, lfo_phase=0.5)",
+   "bassoon": "voice([1, 1, _, [3, 3], [2, 2], 0, 2, 2, '2=', 2, 2, '2=', '2=', 0], beats=14, lfo=11, lfo_phase=0.5)"
   }
  },
  {
@@ -16,11 +16,11 @@
   "notes": "G.lydian",
   "tempo": 83.0,
   "voices": {
-   "flute": "voice([8, 9, 9, 0, 9, 7, _, 0, 0, _, _, _], beats=12, dynamic='mp', lfo=21, lfo_phase=0.5)",
-   "oboe": "voice([2, 2, 0, 0, _, _, _, 3, [3, 2], 2, 0, 2, 2, 0], beats=14, dynamic='mp', lfo=21, lfo_phase=0.5)",
-   "clarinet": "voice([2, _, _, _, _, 2, _, _, _, _, _, 0], beats=12, dynamic='mp', lfo=14, lfo_phase=0.5)",
-   "horn": "voice([2, _, _, 2, _, _, 2, _, _, 2, _, _, _, 0, 0], beats=15, lfo=29, lfo_phase=0.5)",
-   "bassoon": "voice([2, 2, 2, 1, 2, 0, 0, 2, 0, 0, _, _], beats=12, lfo=30, lfo_phase=0.5)"
+   "flute": "voice([8, 9, 9, 0, 9, 7, _, 0, 0, _, _, _], beats=12, dynamic='mp', lfo=15, lfo_phase=0.5)",
+   "oboe": "voice([2, 2, 0, 0, _, _, _, 3, [3, 2], 2, 0, 2, 2, 0], beats=14, dynamic='mp', lfo=16, lfo_phase=0.5)",
+   "clarinet": "voice([2, _, _, _, _, 2, _, _, _, _, _, 0], beats=12, dynamic='mp', lfo=21, lfo_phase=0.5)",
+   "horn": "voice([2, _, _, 2, _, _, 2, _, _, 2, _, _, _, 0, 0], beats=15, lfo=21, lfo_phase=0.5)",
+   "bassoon": "voice([2, 2, 2, 1, 2, 0, 0, 2, 0, 0, _, _], beats=12, lfo=14, lfo_phase=0.5)"
   }
  },
  {
@@ -28,11 +28,11 @@
   "notes": "F.major",
   "tempo": 82.0,
   "voices": {
-   "flute": "voice([2, _, '2=', 4, _, _, 5, _, _, 7, _, _, 0, 0], beats=14, dynamic='mp', lfo=24, lfo_phase=0.5)",
-   "oboe": "voice([4, 3, 0, 4, 0, 3, 2, 3, 3, 4, 4, 3, 4, 3, 3], beats=15, dynamic='mp', lfo=25, lfo_phase=0.5)",
-   "clarinet": "voice([2, 1, 1, _, 3, 1, 0, _, _, _, _, _], beats=12, lfo=16, lfo_phase=0.5)",
-   "horn": "voice([2, _, [2, 2], _, 2, _, 0, 1, 2, 2, _, 0, 2, 2, 2], beats=15, dynamic='mp', lfo=15, lfo_phase=0.5)",
-   "bassoon": "voice([3, 1, 1, 2, 1, [1, 3], 0, 1, _, 0, _, 0], beats=12, lfo=27, lfo_phase=0.5)"
+   "flute": "voice([2, _, '2=', 4, _, _, 5, _, _, 7, _, _, 0, 0], beats=14, dynamic='mp', lfo=12, lfo_phase=0.5)",
+   "oboe": "voice([4, 3, 0, 4, 0, 3, 2, 2, 3, 4, 4, 3, 4, 3, 3], beats=15, dynamic='mp', lfo=24, lfo_phase=0.5)",
+   "clarinet": "voice([3, 1, 1, _, 3, 1, 0, _, _, _, _, _], beats=12, lfo=24, lfo_phase=0.5)",
+   "horn": "voice([2, _, [2, 2], _, 2, _, 0, 2, 2, 2, _, 0, 2, 2, 2], beats=15, dynamic='mp', lfo=17, lfo_phase=0.5)",
+   "bassoon": "voice([2, 1, 1, 2, 1, [1, 3], 0, 1, _, 0, _, 0], beats=12, lfo=14, lfo_phase=0.5)"
   }
  },
  {
@@ -40,11 +40,11 @@
   "notes": "D.lydian",
   "tempo": 81.0,
   "voices": {
-   "flute": "voice([3, _, _, 4, _, _, 5, _, _, 2, _, _, 0, 0], beats=14, dynamic='mp', lfo=23, lfo_phase=0.5)",
-   "oboe": "voice([2, 1, [4, '4='], 0, [3, 2], '2=', 3, 1, 1, 1, 3, 3, [4, '4='], 3, '3=', 0], beats=16, lfo=24, lfo_phase=0.5)",
-   "clarinet": "voice([1, _, _, _, 2, _, _, 2, _, _, _, _, 2, _, _, _], beats=16, dynamic='mp', lfo=9, lfo_phase=0.5)",
-   "horn": "voice([2, 2, [2, 2], 2, _, 0, 0, _, _, _, _, _, 2, 2, 1, 3], beats=16, dynamic='mp', lfo=16, lfo_phase=0.5)",
-   "bassoon": "voice([3, 1, '1=', 3, 3, '3=', 1, 0, 0, _, _, _], beats=12, lfo=20, lfo_phase=0.5)"
+   "flute": "voice([3, _, _, 4, _, _, 5, _, _, 2, _, _, 0, 0], beats=14, dynamic='mp', lfo=22, lfo_phase=0.5)",
+   "oboe": "voice([2, 1, [4, '4='], 0, [3, 2], '2=', 3, 1, 1, 1, 3, 3, [4, '4='], 3, '3=', 0], beats=16, lfo=11, lfo_phase=0.5)",
+   "clarinet": "voice([1, _, _, _, 2, _, _, 2, _, _, _, _, 2, _, _, _], beats=16, dynamic='mp', lfo=23, lfo_phase=0.5)",
+   "horn": "voice([2, 2, [2, 2], 2, _, 0, 0, _, _, _, _, _, 2, 2, 1, 3], beats=16, dynamic='mp', lfo=24, lfo_phase=0.5)",
+   "bassoon": "voice([3, 1, '1=', 3, 3, '3=', 1, 0, 0, _, _, _], beats=12, lfo=9, lfo_phase=0.5)"
   }
  },
  {
@@ -52,11 +52,11 @@
   "notes": "F.quartal_bright",
   "tempo": 73.0,
   "voices": {
-   "flute": "voice([5, 4, [2, 1], 2, 0, 5, 4, 3, [4, 3], 0], beats=10, dynamic='mp', lfo=15, lfo_phase=0.5)",
-   "oboe": "voice([1, [2, '2-'], 2, 0, 2, 1, 0, _, _, 3, 3, 0, 0, _, _], beats=15, dynamic='mp', lfo=31, lfo_phase=0.5)",
-   "clarinet": "voice([2, _, _, _, _, _, _, '2=', _, 4, _, _], beats=12, lfo=23, lfo_phase=0.5)",
-   "horn": "voice([2, _, 2, 2, 2, 2, [2, 2], 2, _, 0], beats=10, dynamic='mp', lfo=12, lfo_phase=0.5)",
-   "bassoon": "voice([2, 1, 3, [3, 3], 3, 1, 0, _, _, 3, 3, 0, 2, 0], beats=14, lfo=31, lfo_phase=0.5)"
+   "flute": "voice([5, 4, [2, 1], 2, 0, 5, 4, 3, [4, 3], 0], beats=10, dynamic='mp', lfo=34, lfo_phase=0.5)",
+   "oboe": "voice([1, [2, '2-'], 2, 0, 2, 1, 0, _, _, 3, 3, 0, 0, _, _], beats=15, dynamic='mp', lfo=22, lfo_phase=0.5)",
+   "clarinet": "voice([4, _, _, _, _, _, _, '4=', _, 4, _, _], beats=12, lfo=31, lfo_phase=0.5)",
+   "horn": "voice([2, _, 2, 2, 2, 2, [2, 2], 2, _, 0], beats=10, dynamic='mp', lfo=34, lfo_phase=0.5)",
+   "bassoon": "voice([3, 1, 3, [3, 3], 3, 1, 0, _, _, 3, 3, 0, 2, 0], beats=14, lfo=18, lfo_phase=0.5)"
   }
  },
  {
@@ -64,11 +64,11 @@
   "notes": "G.quartal_bright",
   "tempo": 70.0,
   "voices": {
-   "flute": "voice([5, 0, 0, _, [6, '6-'], [5, '5+'], 5, 2, '2=', 0], beats=10, lfo=5, lfo_phase=0.5)",
-   "oboe": "voice([2, '2=', 3, '3=', [2, 2], 1, 0, 0, _, _], beats=10, dynamic='mp', lfo=5, lfo_phase=0.5)",
-   "clarinet": "voice([2, [4, 2], [4, 2], [4, 1], 4, 1, 0, 4, _, 0, 1, 1, 4, 4, 0], beats=15, lfo=5, lfo_phase=0.5)",
-   "horn": "voice([3, _, _, 3, _, _, _, _, 0, 0], beats=10, lfo=4, lfo_phase=0.5)",
-   "bassoon": "voice([2, '2=', '2=', '2=', 2, '2=', '2=', '2=', '2=', 2, '2=', '2='], beats=12, lfo=2, lfo_phase=0.5)"
+   "flute": "voice([3, [6, '6-'], 5, 1, 2, 0, 0, _, _, _], beats=10, dynamic='mp', lfo=5, lfo_phase=0.5)",
+   "oboe": "voice([2, '2=', '2=', '2=', 2, '2=', '2=', '2=', 2, '2=', '2=', 0], beats=12, lfo=4, lfo_phase=0.5)",
+   "clarinet": "voice([4, _, _, _, 4, _, _, 3, _, _], beats=10, dynamic='mp', lfo=5, lfo_phase=0.5)",
+   "horn": "voice([3, 3, _, 0, 2, 2, [2, 2], 2, _, 1], beats=10, dynamic='mp', lfo=5, lfo_phase=0.5)",
+   "bassoon": "voice([2, 0, 0, 0, 1, 2, 2, 0, 0, _, _, _, _, _, _], beats=15, lfo=5, lfo_phase=0.5)"
   }
  },
  {
@@ -76,11 +76,11 @@
   "notes": "E.quartal_bright",
   "tempo": 78.0,
   "voices": {
-   "flute": "voice([1, 1, 4, 1, 3, 4, 6, 1, 0, 1, _, 0], beats=12, lfo=7, lfo_phase=0.5)",
-   "oboe": "voice([3, [3, '3+'], 3, 3, 3, 1, '1=', 0, [2, '2='], 0, 0, 0], beats=12, lfo=12, lfo_phase=0.5)",
-   "clarinet": "voice([2, _, _, 2, _, _, 2, _, _, _, _, 2, _, _, 0, 0], beats=16, dynamic='mp', lfo=9, lfo_phase=0.5)",
-   "horn": "voice([2, _, 0, 0, _, _, _, _, 3, 2, 0, 3, [3, 3], 3, 0], beats=15, dynamic='mp', lfo=9, lfo_phase=0.5)",
-   "bassoon": "voice([1, 0, 3, 3, 0, _, _, _, _, _, 3, 3, 0, 3, 3, 0], beats=16, dynamic='mp', lfo=13, lfo_phase=0.5)"
+   "flute": "voice([6, _, _, _, _, _, 5, _, _, _, _, _, 5, _, _, _], beats=16, lfo=30, lfo_phase=0.5)",
+   "oboe": "voice([[2, '2='], ['2=', '2='], ['2=', '2='], [2, '2='], ['2=', '2='], ['2=', '2='], [2, '2='], ['2=', '2='], ['2=', '2='], 0, 0], beats=11, lfo=23, lfo_phase=0.5)",
+   "clarinet": "voice([3, 0, 2, 0, 3, 0, 0, 2, [2, 3], 2, _, 2], beats=12, dynamic='mp', lfo=23, lfo_phase=0.5)",
+   "horn": "voice([2, [2, 2], 2, [2, 2], 2, 0, 2, 2, 1, 0, 2, 0, 3, [3, 3], 3, 3], beats=16, dynamic='mp', lfo=22, lfo_phase=0.5)",
+   "bassoon": "voice([2, [2, 3], [2, 3], 0, 2, 1, 3, 2, '2=', 0, 3, 1, _, 0, 3, 0], beats=16, dynamic='mp', lfo=29, lfo_phase=0.5)"
   }
  },
  {
@@ -101,10 +101,10 @@
   "tempo": 60.0,
   "voices": {
    "flute": "voice([1, 3, [2, 1], [2, 3], [4, 5], [6, 7], 0, 5, [5, 4], 3, [7, 8], [9, 8], 0], beats=13, lfo=20, lfo_phase=0.5)",
-   "oboe": "voice([2, 0, 1, '1=', 4, 0, 0, _, _, 4, 0, 0], beats=12, lfo=22, lfo_phase=0.5)",
-   "clarinet": "voice([2, _, _, _, _, _, 2, _, _], beats=9, dynamic='mp', lfo=40, lfo_phase=0.5)",
-   "horn": "voice([2, 1, 1, 1, _, 1, 0, 1, 1, _, 1, 3], beats=12, lfo=16, lfo_phase=0.5)",
-   "bassoon": "voice([1, '1=', 2, 0, 0, 0, _, 1, 3], beats=9, dynamic='mp', lfo=39, lfo_phase=0.5)"
+   "oboe": "voice([2, 0, 1, '1=', 4, 0, 0, _, _, 4, 0, 0], beats=12, lfo=19, lfo_phase=0.5)",
+   "clarinet": "voice([2, _, _, _, _, _, 2, _, _], beats=9, dynamic='mp', lfo=22, lfo_phase=0.5)",
+   "horn": "voice([2, 1, 1, 1, _, 1, 0, 1, 1, _, 1, 3], beats=12, lfo=40, lfo_phase=0.5)",
+   "bassoon": "voice([1, '1=', 2, 0, 0, 0, _, 1, 3], beats=9, dynamic='mp', lfo=16, lfo_phase=0.5)"
   }
  },
  {
@@ -112,11 +112,11 @@
   "notes": "A.mixolydian",
   "tempo": 76.0,
   "voices": {
-   "flute": "voice([1, '1=', '1=', '1=', '1=', 7, _, _, 9, _, _, 0], beats=12, lfo=23, lfo_phase=0.5)",
-   "oboe": "voice([3, 3, 0, 0, _, 1, 3, 3, 0, _, _, _, _, _, _, _], beats=16, lfo=24, lfo_phase=0.5)",
-   "clarinet": "voice([2, 1, 0, 0, _, _, _, _, _, 1, 0, 3, _, 0], beats=14, lfo=14, lfo_phase=0.5)",
-   "horn": "voice([3, 2, 2, _, [2, 2], 2, [2, 2], 2, 2, _, 0, 2, 2, _, 3, 0], beats=16, dynamic='mp', lfo=22, lfo_phase=0.5)",
-   "bassoon": "voice([2, 2, 2, 2, 0, 2, [1, 2], 0, 0, _, 0, _, _, _], beats=14, dynamic='mp', lfo=15, lfo_phase=0.5)"
+   "flute": "voice([1, '1=', '1=', '1=', '1=', 7, _, _, 9, _, _, 0], beats=12, lfo=15, lfo_phase=0.5)",
+   "oboe": "voice([3, 3, 0, 0, _, 1, 3, 3, 0, _, _, _, _, _, _, _], beats=16, lfo=25, lfo_phase=0.5)",
+   "clarinet": "voice([2, 2, 0, 0, _, _, _, _, _, 2, 0, 2, _, 0], beats=14, lfo=18, lfo_phase=0.5)",
+   "horn": "voice([3, 2, 2, _, [2, 2], 2, [2, 2], 2, 1, _, 0, 1, 2, _, 3, 0], beats=16, dynamic='mp', lfo=11, lfo_phase=0.5)",
+   "bassoon": "voice([3, 3, 3, 3, 0, 3, [1, 2], 0, 0, _, 0, _, _, _], beats=14, dynamic='mp', lfo=9, lfo_phase=0.5)"
   }
  },
  {
@@ -124,11 +124,11 @@
   "notes": "Cs.quartal",
   "tempo": 84.0,
   "voices": {
-   "flute": "voice([6, _, _, 5, _, _, 3, _, _, _, _, _, _, 6, _, _], beats=16, lfo=7, lfo_phase=0.5)",
-   "oboe": "voice([1, 0, 0, 0, 1, 0, [3, 3], 1, _, 1, 0, 0], beats=12, dynamic='mp', lfo=16, lfo_phase=0.5)",
-   "clarinet": "voice([2, 1, 0, _, _, _, _, _, 1, [2, 1], 0, 2, _, 2, 1], beats=15, dynamic='mp', lfo=10, lfo_phase=0.5)",
-   "horn": "voice([2, 2, 2, 3, _, 0, 3, _, 3, [2, 2], 0, 3, 0, 3, 3], beats=15, lfo=13, lfo_phase=0.5)",
-   "bassoon": "voice([2, 3, '3=', 2, 1, 0, 0, _, _, _, 2, 1, 1, 3, 3, 0], beats=16, lfo=9, lfo_phase=0.5)"
+   "flute": "voice([6, _, _, 5, _, _, 3, _, _, _, _, _, _, 6, _, _], beats=16, lfo=16, lfo_phase=0.5)",
+   "oboe": "voice([1, 0, 0, 0, 1, 0, [3, 3], 1, _, 1, 0, 0], beats=12, dynamic='mp', lfo=9, lfo_phase=0.5)",
+   "clarinet": "voice([2, 1, 0, _, _, _, _, _, 1, [3, 1], 0, 2, _, 2, 1], beats=15, dynamic='mp', lfo=13, lfo_phase=0.5)",
+   "horn": "voice([3, 2, 2, 3, _, 0, 3, _, 3, [2, 2], 0, 3, 0, 3, 3], beats=15, lfo=10, lfo_phase=0.5)",
+   "bassoon": "voice([2, 2, '2=', 2, 1, 0, 0, _, _, _, 3, 1, 1, 3, 3, 0], beats=16, lfo=7, lfo_phase=0.5)"
   }
  },
  {
@@ -136,11 +136,11 @@
   "notes": "E.quartal",
   "tempo": 60.0,
   "voices": {
-   "flute": "voice([3, 2, 0, 3, _, 1, [2, 1], 0], beats=8, lfo=11, lfo_phase=0.5)",
-   "oboe": "voice([1, '1=', 0, 3, 0, 3, 3, 0], beats=8, dynamic='mp', lfo=9, lfo_phase=0.5)",
-   "clarinet": "voice([3, _, [1, '1-'], 1, [3, 1], 0, 1, 2], beats=8, dynamic='mp', lfo=8, lfo_phase=0.5)",
-   "horn": "voice([2, _, _, _, _, _, _, _, _, 2, _, _], beats=12, lfo=11, lfo_phase=0.5)",
-   "bassoon": "voice([1, 1, _, 3, 1, 0, 1, 2, [1, 1], 0], beats=10, lfo=9, lfo_phase=0.5)"
+   "flute": "voice([3, 2, 0, 3, _, 1, [2, 1], 0], beats=8, lfo=10, lfo_phase=0.5)",
+   "oboe": "voice([1, '1=', 0, 3, 0, 3, 3, 0], beats=8, dynamic='mp', lfo=11, lfo_phase=0.5)",
+   "clarinet": "voice([3, _, [1, '1-'], 1, [3, 1], 0, 1, 3], beats=8, dynamic='mp', lfo=9, lfo_phase=0.5)",
+   "horn": "voice([2, _, _, _, _, _, _, _, _, 2, _, _], beats=12, lfo=6, lfo_phase=0.5)",
+   "bassoon": "voice([1, 1, _, 2, 1, 0, 1, 2, [1, 1], 0], beats=10, lfo=11, lfo_phase=0.5)"
   }
  },
  {
@@ -148,11 +148,11 @@
   "notes": "D.quartal_bright",
   "tempo": 71.0,
   "voices": {
-   "flute": "voice([3, 3, 3, 0, 0, _, _, _, 0, _], beats=10, dynamic='mp', lfo=26, lfo_phase=0.5)",
-   "oboe": "voice([1, [1, '1+'], 1, 2, 0, 0, 0, 1, '1=', [3, '3='], [3, '3='], [3, '3='], [3, 2], 2], beats=14, dynamic='mp', lfo=12, lfo_phase=0.5)",
-   "clarinet": "voice([4, 2, 4, 0, _, _, 2, [4, 2], [4, 2], 4, 0, 0], beats=12, lfo=22, lfo_phase=0.5)",
-   "horn": "voice([2, _, _, _, _, 2, _, _, 2, _, _, 0], beats=12, lfo=12, lfo_phase=0.5)",
-   "bassoon": "voice([2, 1, 2, 1, 3, [3, 2], 1, 0, 0, _, _, _], beats=12, dynamic='mp', lfo=16, lfo_phase=0.5)"
+   "flute": "voice([2, _, _, _, _, _, _, '5+', _, _, 5, _, _, 0, 0], beats=15, lfo=21, lfo_phase=0.5)",
+   "oboe": "voice([1, '1=', 0, 1, [2, 3], 0, 2, 2, 0, [3, '3='], 2, 0, _, [3, '3='], 0], beats=15, lfo=15, lfo_phase=0.5)",
+   "clarinet": "voice([2, 4, _, 2, 2, [2, 2], [1, 2], 0, 4, 1, 0], beats=11, lfo=11, lfo_phase=0.5)",
+   "horn": "voice([3, 0, 3, 3, 0, 0, _, _, _, _], beats=10, dynamic='mp', lfo=22, lfo_phase=0.5)",
+   "bassoon": "voice([3, 0, 3, 1, 2, 0, 1, 0, 1, [3, 3], 0, 1, 1, 1, 0], beats=15, dynamic='mp', lfo=17, lfo_phase=0.5)"
   }
  },
  {
@@ -160,11 +160,11 @@
   "notes": "Cs.quartal",
   "tempo": 83.0,
   "voices": {
-   "flute": "voice([7, _, _, '3+', _, '3=', _, '3=', 3, _, _, _, 4, _, _, 0], beats=16, dynamic='mp', lfo=29, lfo_phase=0.5)",
-   "oboe": "voice([[3, '3='], [3, 3], ['3=', '3='], ['3=', '3='], [2, 1], 1, 0, 0, 0, 1, _, [3, '3=']], beats=12, dynamic='mp', lfo=25, lfo_phase=0.5)",
-   "clarinet": "voice([1, _, _, _, _, _, 2, _, _, _, 0, 0], beats=12, lfo=43, lfo_phase=0.5)",
-   "horn": "voice([3, 2, 0, 3, 3, 0, 0, _, _, 2, 3, 0, 3, [3, 3], 3, 0], beats=16, lfo=42, lfo_phase=0.5)",
-   "bassoon": "voice([1, 3, 0, _, 2, 0, 3, 3, 3, 1, 3, 2, 0], beats=13, dynamic='mp', lfo=17, lfo_phase=0.5)"
+   "flute": "voice([6, _, _, _, _, 4, _, _, _, _, _, _, 0, 0], beats=14, dynamic='mp', lfo=13, lfo_phase=0.5)",
+   "oboe": "voice([[3, '3='], 0, 1, 1, 0, 0, _, _, _, _, 2, 2, 0, 0, 0, 0], beats=16, lfo=22, lfo_phase=0.5)",
+   "clarinet": "voice([3, _, 3, 1, 0, 0, _, _, _, _, _, _], beats=12, dynamic='mp', lfo=20, lfo_phase=0.5)",
+   "horn": "voice([1, [2, 3], _, 3, 3, 0, 3, _, _, 3, [3, 3], 3, 0, 0, _, _], beats=16, lfo=20, lfo_phase=0.5)",
+   "bassoon": "voice([2, 1, 0, 2, 0, 1, '1=', 1, 1, 1, 0, 0, 0, _, _, _], beats=16, dynamic='mp', lfo=12, lfo_phase=0.5)"
   }
  },
  {
@@ -184,11 +184,11 @@
   "notes": "C.major",
   "tempo": 75.0,
   "voices": {
-   "flute": "voice([5, '5=', '5=', 5, '5=', '5=', 6, _, _, 0, 0], beats=11, dynamic='mp', lfo=21, lfo_phase=0.5)",
-   "oboe": "voice([3, [4, 3], 1, 3, '3=', 4, '4=', 0, 3, 3, 0, 0, 0, 1, 0, 0], beats=16, dynamic='mp', lfo=35, lfo_phase=0.5)",
-   "clarinet": "voice([2, 1, [2, 1], [2, 1], [1, 2], 0, 1, _, 2, 0, 0], beats=11, dynamic='mp', lfo=17, lfo_phase=0.5)",
-   "horn": "voice([2, 1, 1, 1, 0, 2, 2, 2, _, 2, 2, 0, _, _, _, _], beats=16, dynamic='mp', lfo=26, lfo_phase=0.5)",
-   "bassoon": "voice([2, '2=', '2=', '2=', '2=', '2=', '2=', '2=', 2, '2=', '2=', 0], beats=12, lfo=29, lfo_phase=0.5)"
+   "flute": "voice([5, '5=', '5=', 5, '5=', '5=', 6, _, _, 0, 0], beats=11, dynamic='mp', lfo=40, lfo_phase=0.5)",
+   "oboe": "voice([3, [4, 3], 1, 3, '3=', 4, '4=', 0, 3, 3, 0, 0, 0, 1, 0, 0], beats=16, dynamic='mp', lfo=37, lfo_phase=0.5)",
+   "clarinet": "voice([2, 1, [2, 1], [3, 1], [1, 2], 0, 1, _, 2, 0, 0], beats=11, dynamic='mp', lfo=18, lfo_phase=0.5)",
+   "horn": "voice([2, 1, 1, 1, 0, 2, 2, 2, _, 2, 2, 0, _, _, _, _], beats=16, dynamic='mp', lfo=41, lfo_phase=0.5)",
+   "bassoon": "voice([2, '2=', '2=', '2=', '2=', '2=', '2=', '2=', 2, '2=', '2=', 0], beats=12, lfo=39, lfo_phase=0.5)"
   }
  },
  {
@@ -208,11 +208,11 @@
   "notes": "B.lydian",
   "tempo": 64.0,
   "voices": {
-   "flute": "voice([2, '2=', '2=', 3, _, _, _, 0, 0], beats=9, dynamic='mp', lfo=31, lfo_phase=0.5)",
-   "oboe": "voice([2, 3, 0, 2, '2=', 0, _, _, _], beats=9, dynamic='mp', lfo=31, lfo_phase=0.5)",
-   "clarinet": "voice([2, _, _, 2, _, _, _, _, 2, _, _], beats=11, lfo=29, lfo_phase=0.5)",
-   "horn": "voice([2, 1, 1, 1, 0, 1, _, [1, 1], 0], beats=9, lfo=28, lfo_phase=0.5)",
-   "bassoon": "voice([2, 0, 1, 0, 0, _, _, _, _, _, _, _], beats=12, dynamic='mp', lfo=13, lfo_phase=0.5)"
+   "flute": "voice([2, '2=', '2=', 3, _, _, _, 0, 0], beats=9, dynamic='mp', lfo=32, lfo_phase=0.5)",
+   "oboe": "voice([2, 3, 0, 2, '2=', 0, _, _, _], beats=9, dynamic='mp', lfo=36, lfo_phase=0.5)",
+   "clarinet": "voice([2, _, _, 2, _, _, _, _, 2, _, _], beats=11, lfo=31, lfo_phase=0.5)",
+   "horn": "voice([2, 1, 1, 1, 0, 1, _, [1, 1], 0], beats=9, lfo=18, lfo_phase=0.5)",
+   "bassoon": "voice([3, 0, 1, 0, 0, _, _, _, _, _, _, _], beats=12, dynamic='mp', lfo=27, lfo_phase=0.5)"
   }
  },
  {
@@ -220,11 +220,11 @@
   "notes": "F.quartal",
   "tempo": 76.0,
   "voices": {
-   "flute": "voice([6, _, _, _, _, _, '5+', _, 5, 6, _, _], beats=12, dynamic='mp', lfo=21, lfo_phase=0.5)",
-   "oboe": "voice([3, 1, 2, 3, 0, 2, 3, '3=', [2, '2+'], 2, 0, 0, _, 1, [2, '2+'], 3], beats=16, dynamic='mp', lfo=19, lfo_phase=0.5)",
-   "clarinet": "voice([1, 2, [1, '1-'], 1, 0, 2, 1, 1, 0, 2, [3, '3+'], 3, 0, 0, _, _], beats=16, dynamic='mp', lfo=20, lfo_phase=0.5)",
-   "horn": "voice([2, 0, 0, 0, 2, 2, 2, 0, 3, 3, 3, 3, _, 0, [3, 3], 0], beats=16, lfo=20, lfo_phase=0.5)",
-   "bassoon": "voice([1, [2, 2], 0, 1, 0, 0, 1, [2, 2], [1, 1], 3, [1, 3], 0, [1, 1], 0], beats=14, dynamic='mp', lfo=15, lfo_phase=0.5)"
+   "flute": "voice([4, 2, 1, 0, 0, _, _, _, _, _, _, _], beats=12, lfo=12, lfo_phase=0.5)",
+   "oboe": "voice([1, 0, 3, 0, 0, 2, 2, 1, 2, [2, '2+'], 3, 0], beats=12, dynamic='mp', lfo=21, lfo_phase=0.5)",
+   "clarinet": "voice([1, _, _, _, 3, _, _, 2, _, _, 2, _, _, 0], beats=14, lfo=11, lfo_phase=0.5)",
+   "horn": "voice([2, _, 2, 2, 2, 0, 0, _, _, _, _, _, _, 1, [2, 2], 2], beats=16, dynamic='mp', lfo=20, lfo_phase=0.5)",
+   "bassoon": "voice([1, 2, 1, 2, 0, 0, 0, 1, 3, '3=', 1, 2, 3, 0], beats=14, lfo=20, lfo_phase=0.5)"
   }
  },
  {
@@ -234,9 +234,9 @@
   "voices": {
    "flute": "voice([6, [4, 5], [6, 7], 6, 6, 7, 6, 0, 1, 0, 2, 8, [8, 8], [7, 6], 0], beats=15, lfo=8, lfo_phase=0.5)",
    "oboe": "voice([4, 3, 0, 4, 3, _, 3, 0, 3, 3, 0, 0, 3, 2, 0], beats=15, dynamic='mp', lfo=5, lfo_phase=0.5)",
-   "clarinet": "voice([3, [1, 3], 1, 2, 2, 2, [3, 1], 0, 3, 1, 1, _, 3, [3, 3], [1, 3], 1, _, 0], beats=18, lfo=7, lfo_phase=0.5)",
+   "clarinet": "voice([3, [1, 3], 1, 2, 3, 2, [3, 1], 0, 3, 1, 1, _, 3, [3, 3], [1, 3], 1, _, 0], beats=18, lfo=7, lfo_phase=0.5)",
    "horn": "voice([2, _, '2=', _, '2=', _, '2=', _, '2=', 2, _, '2=', _, '2=', _, '2=', _, '2='], beats=18, dynamic='mp', lfo=9, lfo_phase=0.5)",
-   "bassoon": "voice([2, 2, 0, _, _, _, _, _, 1, 3, 3, 0], beats=12, lfo=9, lfo_phase=0.5)"
+   "bassoon": "voice([2, 2, 0, _, _, _, _, _, 1, 3, 2, 0], beats=12, lfo=9, lfo_phase=0.5)"
   }
  }
 ]

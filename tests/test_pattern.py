@@ -43,7 +43,8 @@ class ExpandTest(unittest.TestCase):
             shape(expand([1, "3+", ["2-", 2]], 2)),
             [(0, third, 1), (third, third, "3+"), (2 * third, sixth, "2-"), (Fr(5, 3), sixth, 2)],
         )
-        for bad in ("0+", "3*", "+3", "3"):
+        self.assertEqual(shape(expand(["3=", "3+=", "3-="], 3)), [(0, 1, "3="), (1, 1, "3+="), (2, 1, "3-=")])
+        for bad in ("0+", "3*", "+3", "3", "3=+", "3=="):
             with self.assertRaises(ValueError):
                 expand([bad], 1)
 

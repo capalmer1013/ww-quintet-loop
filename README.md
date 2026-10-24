@@ -85,7 +85,7 @@ Every field of `Config` (`src/quintet/config.py`) is a flag. Booleans also have 
 - Chords: `maj min dim aug sus2 sus4 dom7 maj7 min7 dim7 m7b5 maj7s11`
 - Extended: `maj9 maj69 min9 min11 sus9 min69 dom9 dom7s11`
 - Scales: `minor dorian phrygian locrian harmonic_minor pentatonic_major pentatonic_minor
-  whole_tone lydian_dominant`
+  whole_tone lydian_dominant octatonic`
 
 The harmony and the tempo come from separate random streams per seed, so fixing one doesn't
 change what a seed picks for the other.
@@ -151,7 +151,8 @@ render('piece_7', F.quartal_bright,
   `beats` beats; `drift=k` shortens the cycle to `beats * k/(k+1)`; `dynamic` is one of
   `pp p mp mf f ff`; `lfo=k` adds a volume sine with `k` cycles over the piece.
 - Pattern elements: `1`, `2`, … palette notes (lowest first); `0` rest; `_` hold; `[...]` splits
-  the slot evenly; `"3+"`/`"3-"` note 3 a scale step up/down; `"3="` note 3 renewed seamlessly.
+  the slot evenly; `"3+"`/`"3-"` note 3 a scale step up/down; `"3="` note 3 renewed seamlessly
+  (`"3+="`/`"3-="` renew the stepped note).
 
 ## Development
 

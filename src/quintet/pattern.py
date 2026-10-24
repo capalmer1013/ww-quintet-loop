@@ -3,8 +3,8 @@
 A list divides its span equally among its elements, which are:
 - an int k >= 1: palette note k; 0: a rest
 - "k+" / "k-": one scale step above / below palette note k
-- "k=": palette note k again, renewed seamlessly (written by generation where a held note
-  outlasts its recording)
+- "k=" / "k+=" / "k-=": the note "k" / "k+" / "k-" again, renewed seamlessly (written by
+  generation where a held note outlasts its recording)
 - _: hold the previous note (or rest) through this slot
 - a list: a nested division of this slot
 
@@ -32,12 +32,13 @@ __all__ = [
     "ACCENT_DB",
 ]
 
-# A scale step or renewal: palette index, then "+" (step up), "-" (step down) or "=" (renew).
-STEP = re.compile(r"([1-9][0-9]*)([+=-])")
+# A scale step or renewal: palette index, then "+" (step up), "-" (step down), "=" (renew), or a
+# step then "=" (renew the stepped note).
+STEP = re.compile(r"([1-9][0-9]*)([+-]?=|[+-])")
 
 
 def palette_index(element: int | str) -> int:
-    """The palette note a note element plays or steps from: 3 for 3, "3+", "3-" and "3="."""
+    """The palette note a note element plays or steps from: 3 for 3, "3+", "3-", "3=" and "3-="."""
     return element if isinstance(element, int) else int(STEP.fullmatch(element).group(1))
 
 

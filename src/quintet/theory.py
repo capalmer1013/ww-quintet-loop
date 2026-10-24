@@ -93,6 +93,7 @@ SCALES = {
     "pentatonic_minor": (0, 3, 5, 7, 10),
     "whole_tone": (0, 2, 4, 6, 8, 10),
     "lydian_dominant": (0, 2, 4, 6, 7, 9, 10),
+    "octatonic": (0, 2, 3, 5, 6, 8, 9, 11),  # whole-half diminished
 }
 
 QUALITIES = {**CHORDS, **SCALES}
@@ -136,7 +137,7 @@ PARENT_SCALES = {
     "dom7s11": "lydian_dominant",
     "dim": "locrian",
     "m7b5": "locrian",
-    "dim7": "harmonic_minor",
+    "dim7": "octatonic",
     "aug": "whole_tone",
     "quartal": "mixolydian",
     "quartal_bright": "lydian",

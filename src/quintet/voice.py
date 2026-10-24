@@ -11,14 +11,14 @@ from __future__ import annotations
 import copy
 import math
 import random
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass, replace
 from fractions import Fraction
 from functools import reduce
 from itertools import combinations
 
 from .config import Config
-from .pattern import LEADING_HOLD, STEP, _, event_paths, expand, leaves, palette_index
+from .pattern import LEADING_HOLD, STEP, _, event_paths, expand, leaves
 from .samples import (
     DYNAMICS,
     QUINTET,
@@ -280,13 +280,14 @@ def palette(notes: PitchSet, inst: Instrument) -> list[int]:
 
 def resolve_pitch(index: int | str, tones: list[int], notes: PitchSet, playable=None) -> int:
     """MIDI pitch of a pattern element: palette note k (wrapping); "k+"/"k-", the next tone of the
-    chord's parent scale above/below it; or "k=", note k renewed. A step the instrument can't play
-    stays on the note."""
+    chord's parent scale above/below it; a renewal ("k=", "k+=", "k-="), the note it renews. A step
+    the instrument can't play stays on the note."""
     if isinstance(index, int):
         return tones[(index - 1) % len(tones)]
-    k, sign = STEP.fullmatch(index).groups()
+    k, mark = STEP.fullmatch(index).groups()
     base = tones[(int(k) - 1) % len(tones)]
-    if sign == "=":
+    sign = mark.rstrip("=")
+    if not sign:
         return base
     scale = set(notes.scale.pitch_classes)
     step = 1 if sign == "+" else -1
@@ -464,7 +465,8 @@ def parallels(voices: dict[str, Voice], notes: PitchSet, config: Config | None =
 
 def clashes(voices: dict[str, Voice], notes: PitchSet, config: Config | None = None) -> list[tuple]:
     """Moments where a note starts too close (too_close) to a note another voice is sounding.
-    Returns (beat, voice_a, voice_b, ordinal_a, ordinal_b), voice_a being the one that starts."""
+    Returns (beat, voice_a, voice_b, ordinal_a, ordinal_b), voice_a being the one that starts (the
+    first in QUINTET order when both do)."""
     return _clashes_in(_timelines(voices, notes, config))
 
 
@@ -534,11 +536,13 @@ def _parallels_in(lines: dict[str, tuple]) -> list[tuple]:
 def _clashes_in(lines: dict[str, tuple]) -> list[tuple]:
     found = set()
     for a, b in combinations(QUINTET, 2):
-        for x, y in ((a, b), (b, a)):
+        # y's latest note starting by t; the other way round, before t, so that two notes starting
+        # together count once
+        for x, y, latest in ((a, b, bisect_right), (b, a, bisect_left)):
             held_y = lines[y][1]
             starts = [n[0] for n in held_y]
             for t, _end, p, k in lines[x][1]:
-                i = bisect_right(starts, t) - 1  # y's latest note starting by t
+                i = latest(starts, t) - 1
                 if i >= 0 and held_y[i][1] > t and too_close(p, held_y[i][2]):
                     found.add((t, x, y, k, held_y[i][3]))
     return sorted(found)
@@ -614,8 +618,8 @@ def _max_beats(inst: Instrument, midi: int, dynamic: str, beat_seconds: Fraction
 
 def _rearticulate(v: Voice, inst: Instrument, notes: PitchSet, beat_seconds: Fraction) -> Voice:
     """Renew notes held longer than the instrument can sustain them: a hold that would carry a note
-    past its limit becomes "k=" (the same note, renewed seamlessly), and a single slot that is itself
-    too long splits into the note followed by renewals."""
+    past its limit becomes "k=" (or "k+=", "k-=" for a step: the same pitch, renewed seamlessly),
+    and a single slot that is itself too long splits into the note followed by renewals."""
     pattern = copy.deepcopy(v.pattern)
     tones = palette(notes, inst)
     limits: dict[int, Fraction] = {}
@@ -627,7 +631,7 @@ def _rearticulate(v: Voice, inst: Instrument, notes: PitchSet, beat_seconds: Fra
         return limits[m]
 
     def renewed(index) -> str:
-        return f"{palette_index(index)}="
+        return f"{str(index).rstrip('=')}="
 
     current, held = None, Fraction(0)  # the sounding note and how long it has been held
     for path, _start, beats, leaf in leaves(pattern, v.span):

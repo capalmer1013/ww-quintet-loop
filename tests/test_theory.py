@@ -112,7 +112,9 @@ class HarmonyTest(unittest.TestCase):
 
     def test_every_chord_has_a_parent_scale(self):
         for quality in CHORDS:
-            self.assertIn(getattr(C, quality).scale.quality, SCALES, quality)
+            chord = getattr(C, quality)
+            self.assertIn(chord.scale.quality, SCALES, quality)
+            self.assertLessEqual(set(chord.pitch_classes), set(chord.scale.pitch_classes), quality)
         for quality in SCALES:
             self.assertEqual(getattr(C, quality).scale, getattr(C, quality))
 

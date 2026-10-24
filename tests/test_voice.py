@@ -267,10 +267,27 @@ class RearticulationTest(unittest.TestCase):
                 for i, idx in enumerate(events):
                     if isinstance(idx, str) and idx.endswith("="):
                         renewed += 1
-                        before = events[i - 1]
-                        base = palette_index(before)
-                        self.assertEqual(int(idx[:-1]), base)  # renews the note before it
+                        self.assertEqual(idx.rstrip("="), str(events[i - 1]).rstrip("="))  # renews the note before it
         self.assertGreater(renewed, 10)
+
+    def test_renewals_keep_the_pitch(self):
+        tones = [60, 64, 67, 71]  # C E G B
+        self.assertEqual(resolve_pitch("2=", tones, C.maj9), 64)
+        self.assertEqual(resolve_pitch("2+=", tones, C.maj9), resolve_pitch("2+", tones, C.maj9))
+        self.assertEqual(resolve_pitch("1-=", tones, C.maj9), resolve_pitch("1-", tones, C.maj9))
+        stepped = 0
+        for s in range(200):
+            notes = resolve_notes("random", s)
+            for name, x in generate(s, notes).items():
+                inst = instrument(name)
+                tones = palette(notes, inst)
+                events = [e.index for e in expand(x.pattern, x.span)]
+                for i, idx in enumerate(events):
+                    if isinstance(idx, str) and idx.endswith("="):
+                        stepped += idx[-2] in "+-"
+                        here, before = (resolve_pitch(j, tones, notes, inst.playable) for j in (idx, events[i - 1]))
+                        self.assertEqual(here, before, (s, name))
+        self.assertGreater(stepped, 0)
 
     def test_no_note_outlasts_what_its_instrument_can_sustain(self):
         for s in range(20):
@@ -299,6 +316,12 @@ class SpacingTest(unittest.TestCase):
         self.assertFalse(too_close(36, 43))  # a low 5th is fine
         self.assertTrue(too_close(40, 44))  # a major 3rd below B-flat 2 is muddy
         self.assertFalse(too_close(50, 50) or too_close(50, 62) or too_close(30, 60))
+
+    def test_notes_starting_together_clash_once(self):
+        rest = {n: voice([0], beats=2) for n in QUINTET}
+        # clarinet D4 over bassoon C3, attacked together: a muddy 9th
+        v = {**rest, "clarinet": voice([3, 0], beats=2), "bassoon": voice([3, 0], beats=2)}
+        self.assertEqual([f[1:3] for f in clashes(v, C.maj9)], [("clarinet", "bassoon")])
 
     def test_generated_pieces_keep_clashes_rare(self):
         for s in range(15):

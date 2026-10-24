@@ -825,3 +825,19 @@ pieces sounded like random notes. Now 100% do.
 - **`TEMPO_RANGE`** is 60–85 bpm (was 55–75), still a whole number, random per seed: faster at the
   top, and nothing below 60 now that the hall is longer and the mix more compressed.
 - Loop lengths stay 8–13 s, so a faster piece fits more beats into each loop.
+
+## 49. Three generation fixes (added 2026-10-23)
+
+- **Renewed step tones keep their pitch.** A held `"3+"`/`"3-"` that outlasted its recording was
+  renewed as `"3="`, which plays palette note 3, so the pitch jumped mid-hold (12 of 1047
+  renewals over seeds 0–199). Renewals now repeat the element they renew: `"3+="`/`"3-="` for a
+  step, `"3="` for a palette note. `STEP` accepts the new forms; render already treats anything
+  ending in `=` as a renewal.
+- **Clashes between notes that start together count once.** `_clashes_in` checked each pair both
+  ways, so two simultaneous attacks were logged as (a, b) and (b, a) and used double their share
+  of `CLASHES_PER_MINUTE`. The reverse direction now only looks at notes already sounding before
+  the attack.
+- **`dim7`'s parent scale is the octatonic** (whole-half diminished, 0 2 3 5 6 8 9 11, new in
+  `SCALES`). Harmonic minor lacks C dim7's G♭ and A.
+- **Tests:** a renewal never changes pitch (seeds 0–199), simultaneous attacks clash once, and
+  every chord's tones lie in its parent scale. The generation fixture is re-recorded.
