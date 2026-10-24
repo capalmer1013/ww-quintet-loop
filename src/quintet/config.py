@@ -23,7 +23,8 @@ class Config:
     """Precedence, lowest to highest: field defaults < values passed to Config(...) < command line.
 
     Every field is exposed as a --kebab-case flag automatically; add a field to add a flag.
-    The most recently created Config becomes the current one. Pass argv=[] to ignore the CLI.
+    The most recently created Config becomes the current one. Pass argv=[] to ignore the CLI;
+    an unknown flag is an error.
     """
 
     sample_root: Path = field(default=DEFAULT_SAMPLE_ROOT, metadata={"help": "directory of instrument sample folders"})
@@ -43,7 +44,10 @@ class Config:
     reverb: float = field(default=0.75, metadata={"help": "hall reverb amount (0 = dry)"})
     room: float = field(default=0.9, metadata={"help": "hall size, 0-1 (0.9 is about a 2.85 s decay)"})
     reverb_ir: str = field(
-        default="", metadata={"help": "impulse response WAV of a real space, used instead of the built-in hall"}
+        default="",
+        metadata={
+            "help": "impulse response WAV of a real space, used instead of the built-in hall (unused at --reverb 0)"
+        },
     )
     master: bool = field(
         default=True, metadata={"help": "EQ, compress and loudness-normalise the mix for small speakers"}
@@ -85,14 +89,14 @@ class Config:
             else:
                 kwargs["type"] = type(current)
             parser.add_argument("--" + f.name.replace("_", "-"), **kwargs)
-        overrides, _ = parser.parse_known_args(argv)
+        overrides = parser.parse_args(argv)
         for name, value in vars(overrides).items():
             setattr(self, name, value)
 
     @classmethod
     def current(cls) -> Config:
-        """The active config, creating a default one (which still reads the CLI) if none exists."""
-        return cls._current or cls()
+        """The active config, creating a default one (ignoring the CLI) if none exists."""
+        return cls._current or cls(argv=[])
 
     def bpm(self) -> float:
         """The tempo to render at; raises while it is still 0 (random), which the CLI resolves per seed."""
@@ -114,9 +118,12 @@ class Config:
             raise ValueError("--count only applies to --seeds now; give a range (--seeds A-B) instead")
         start, sep, end = self.seeds.partition("-")
         try:
-            return range(int(start), int(end) if sep else int(start) + 1)
+            seeds = range(int(start), int(end) if sep else int(start) + 1)
         except ValueError:
             raise ValueError(f"--seeds must be A, A-B or now, got {self.seeds!r}") from None
+        if not seeds:
+            raise ValueError(f"--seeds {self.seeds} is empty: A-B needs A < B (B is excluded)")
+        return seeds
 
     def _claimed_seeds(self) -> Iterator[int]:
         """`count` consecutive free seeds from the clock, each claimed as it is reached."""

@@ -52,7 +52,7 @@ Every field of `Config` (`src/quintet/config.py`) is a flag. Booleans also have 
 | `--max-seconds` | `480` | Longest allowed piece (one full phase cycle) |
 | `--reverb` | `0.75` | Hall amount; `0` = dry (no hall, no early reflections) |
 | `--room` | `0.9` | Hall size 0–1 (`0.9` ≈ 2.85 s decay, `1` ≈ 3.1 s) |
-| `--reverb-ir` | none | Impulse response WAV of a real space (any rate, mono or stereo) instead of the built-in hall; `--room` is then ignored |
+| `--reverb-ir` | none | Impulse response WAV of a real space (any rate, mono or stereo) instead of the built-in hall; `--room` is then ignored, and the IR is unused at `--reverb 0` |
 | `--master` | on | Phone-friendly EQ, compression, −13 LUFS, −3 dBFS peaks |
 | `--saturation` | `0.3` | Tape-style warmth when mastering; `0` = clean |
 | `--humanize` | on | Timing, breaths, varied takes and levels |
