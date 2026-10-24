@@ -841,3 +841,24 @@ pieces sounded like random notes. Now 100% do.
   `SCALES`). Harmonic minor lacks C dim7's G♭ and A.
 - **Tests:** a renewal never changes pitch (seeds 0–199), simultaneous attacks clash once, and
   every chord's tones lie in its parent scale. The generation fixture is re-recorded.
+
+## 50. Clean joins across the loop point, a smooth sine on long pieces (added 2026-10-23)
+
+- **Why:** a code review found two render-only faults. The generation fixture is unchanged.
+- **Joins across the loop point.** Event 0 now has the piece's last event as its predecessor, as
+  every other event has the one before it. A repeat or renewal ("k=") there is phase-aligned, and
+  a renewal keeps the held recording instead of picking a fresh take (or another recording).
+  `voice_line` picks recordings in index order (so takes rotate as before), then builds notes round
+  the loop (`_loop_order`) from the first one not joined to its predecessor. Intonation does the
+  same, so a renewal at event 0 keeps the held note's tuning. A line joined all the way round (a
+  held note, `[1, 1, 1, 1]`) still breaks at event 0.
+- **Volume sine past 2^24 frames.** `lfo_curve` interpolates at float64 positions: float32 can't
+  hold every frame index past about 380 s, so pieces near `--max-seconds 480` had a stair-stepped
+  curve there. Shorter pieces are bit-identical.
+- **`sustain`'s trim loop** is capped at `TRIM_PASSES` (32) and raises past it. A check over every
+  reachable recording and note length needs at most 10 passes, so the cap never changes the output.
+- **Measured** (seeds 4, 5, 7, 8, 23 at 72 bpm, `--max-seconds 150`): seeds 7 and 8 are
+  bit-identical. In 4, 5 and 23 only the first note of a stem that repeats across the loop point
+  changes. `make seam` reports the same jump across the join as before for all five.
+- **Tests:** a renewal at the loop point reuses the last note's recording and is phase-aligned; the
+  volume sine past 2^24 frames is no longer held for every other frame.
