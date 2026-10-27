@@ -2,7 +2,7 @@
 
 Generates short phasing pieces for woodwind quintet (flute, oboe, clarinet, horn, bassoon) and
 renders them to WAV from a bundled sample library. Each voice loops its own pattern over its own
-length, so the loops drift in and out of phase, Reich-style, into a slowly shifting chord cloud.
+length, so the loops drift in and out of phase into a slowly shifting chord cloud.
 A piece lasts exactly one full phase cycle, so it loops seamlessly.
 
 ## Setup
